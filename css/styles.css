@@ -704,6 +704,8 @@ body {
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   min-height: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .custody-mode-row {
@@ -1064,6 +1066,11 @@ body {
   gap: 0.25rem;
   min-width: 8rem;
   font-size: 0.85rem;
+}
+
+.visit-time-field input[type="time"] {
+  min-height: 2.5rem;
+  font-size: 1rem;
 }
 
 .weekend-days-picker {

@@ -112,15 +112,34 @@ function scrollMessagesToBottom() {
   if (thread) thread.scrollTop = thread.scrollHeight;
 }
 
+let custodyPersistTimer = null;
+
+function queueCustodyPersist(toastMsg, delay = 500) {
+  clearTimeout(custodyPersistTimer);
+  const persist = async () => {
+    try {
+      await saveSettings(appData.settings);
+      if (toastMsg) showToast(toastMsg, 'success');
+    } catch (err) {
+      handleDbError(err);
+    }
+  };
+  if (delay <= 0) persist();
+  else custodyPersistTimer = setTimeout(persist, delay);
+}
+
+function updateCustodyUi({ toastMsg, reRender = true, persist = true, saveDelay = 400 } = {}) {
+  if (reRender) render();
+  if (persist) queueCustodyPersist(toastMsg, saveDelay);
+}
+
+async function flushCustodyPersist() {
+  clearTimeout(custodyPersistTimer);
+  await saveSettings(appData.settings);
+}
+
 async function saveCustodySettings(toastMsg) {
-  try {
-    await saveSettings(appData.settings);
-    await refreshData();
-    if (toastMsg) showToast(toastMsg, 'success');
-    render();
-  } catch (err) {
-    handleDbError(err);
-  }
+  updateCustodyUi({ toastMsg, reRender: true, saveDelay: toastMsg ? 0 : 300 });
 }
 
 function getManualWeekDates(offsetWeeks = 0) {
@@ -630,15 +649,7 @@ function setupEventListeners() {
       const timesRow = document.querySelector(`[data-visit-times-for="${scope}"][data-visit-key="${key}"]`);
       if (timesRow) timesRow.classList.toggle('is-hidden', e.target.checked);
       applyVisitDetailToSettings(scope, key);
-      saveCustodySettings();
-      return;
-    }
-
-    if (e.target.matches('[data-visit-pickup], [data-visit-return]')) {
-      const scope = e.target.dataset.visitPickup || e.target.dataset.visitReturn;
-      const key = e.target.dataset.visitKey;
-      applyVisitDetailToSettings(scope, key);
-      saveCustodySettings();
+      updateCustodyUi({ reRender: false, saveDelay: 500 });
       return;
     }
 
@@ -649,7 +660,7 @@ function setupEventListeners() {
       if (panel) panel.classList.toggle('is-hidden', !e.target.checked);
       if (row) row.classList.toggle('is-visit-active', e.target.checked);
       collectVisitHoursFromForm(e.target.closest('#custody-form') || document);
-      saveCustodySettings();
+      updateCustodyUi({ reRender: false, saveDelay: 400 });
       return;
     }
 
@@ -739,20 +750,47 @@ function setupEventListeners() {
 
   document.getElementById('topbar-actions').addEventListener('click', handleContentClick);
 
+  document.getElementById('content').addEventListener('input', e => {
+    if (!e.target.closest('#custody-form')) return;
+
+    if (e.target.matches('[data-visit-pickup], [data-visit-return]')) {
+      const scope = e.target.dataset.visitPickup || e.target.dataset.visitReturn;
+      const key = e.target.dataset.visitKey;
+      applyVisitDetailToSettings(scope, key);
+      updateCustodyUi({ reRender: false, saveDelay: 900 });
+      return;
+    }
+
+    if (e.target.matches('[data-visit-hours-pickup], [data-visit-hours-return]')) {
+      collectVisitHoursFromForm(e.target.closest('#custody-form'));
+      updateCustodyUi({ reRender: false, saveDelay: 900 });
+    }
+  });
+
   document.getElementById('content').addEventListener('change', e => {
     if (e.target.matches('[data-monthly-field]')) {
       collectCustodyExtrasFromForm(e.target.closest('#custody-form') || document);
-      saveCustodySettings();
+      updateCustodyUi({ reRender: false, saveDelay: 500 });
       return;
     }
-    if (e.target.matches('#visitHoursBaseParent, [data-visit-hours-parent], [data-visit-hours-pickup], [data-visit-hours-return]')) {
+    if (e.target.matches('#visitHoursBaseParent, [data-visit-hours-parent]')) {
       collectVisitHoursFromForm(e.target.closest('#custody-form') || document);
-      saveCustodySettings();
+      updateCustodyUi({ reRender: false, saveDelay: 500 });
       return;
     }
-    if (e.target.matches('input[name="weekendDays"], #weekendParent, #weekendOffParent, #weekendInterval, #weekendStartDate')) {
+    if (e.target.matches('[data-visit-hours-pickup], [data-visit-hours-return]')) {
+      collectVisitHoursFromForm(e.target.closest('#custody-form') || document);
+      updateCustodyUi({ reRender: false, saveDelay: 500 });
+      return;
+    }
+    if (e.target.matches('input[name="weekendDays"]')) {
       collectCustodyExtrasFromForm(e.target.closest('#custody-form') || document);
-      saveCustodySettings();
+      updateCustodyUi({ reRender: true, saveDelay: 400 });
+      return;
+    }
+    if (e.target.matches('#weekendParent, #weekendOffParent, #weekendInterval, #weekendStartDate')) {
+      collectCustodyExtrasFromForm(e.target.closest('#custody-form') || document);
+      updateCustodyUi({ reRender: false, saveDelay: 400 });
       return;
     }
     if (e.target.name === 'custodyPattern' && e.target.closest('#custody-form')) {
@@ -769,7 +807,7 @@ function setupEventListeners() {
       if (e.target.value === 'visit-hours' && !appData.settings.visitHours) {
         appData.settings.visitHours = structuredClone(DEFAULT_DATA.settings.visitHours);
       }
-      saveCustodySettings();
+      updateCustodyUi({ reRender: true, saveDelay: 300 });
     }
   });
 
@@ -778,6 +816,7 @@ function setupEventListeners() {
       e.preventDefault();
       const fd = getFormData(e.target);
       collectCustodyExtrasFromForm(e.target);
+      await flushCustodyPersist();
       appData.settings.custodyPattern = fd.custodyPattern || appData.settings.custodyPattern;
       if (fd.custodyStartDate) appData.settings.custodyStartDate = fd.custodyStartDate;
       (async () => {
