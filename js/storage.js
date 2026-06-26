@@ -1,3 +1,5 @@
+const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+
 const DEFAULT_DATA = {
   settings: {
     parentAName: 'הורה א',
@@ -7,7 +9,8 @@ const DEFAULT_DATA = {
     custodyPattern: 'alternating-weeks',
     weekSchedule: {
       0: 'a', 1: 'a', 2: 'a', 3: 'b', 4: 'b', 5: 'b', 6: 'b'
-    }
+    },
+    manualDates: {}
   },
   children: [],
   events: [],
@@ -20,9 +23,14 @@ function getParentName(data, parent) {
 }
 
 function getCustodyForDate(data, dateStr) {
-  const { custodyPattern, custodyStartDate, weekSchedule } = data.settings;
+  const { custodyPattern, custodyStartDate, weekSchedule, manualDates = {} } = data.settings;
   const date = new Date(dateStr + 'T12:00:00');
   const dayOfWeek = date.getDay();
+
+  if (custodyPattern === 'manual') {
+    if (manualDates[dateStr]) return manualDates[dateStr];
+    return weekSchedule[dayOfWeek] || 'a';
+  }
 
   if (custodyPattern === 'weekly') {
     return weekSchedule[dayOfWeek] || 'a';
@@ -57,6 +65,13 @@ function formatDateShort(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T12:00:00'));
   return d.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
+function formatDateRange(startStr, endStr) {
+  const start = new Date(startStr + 'T12:00:00');
+  const end = new Date(endStr + 'T12:00:00');
+  const opts = { day: 'numeric', month: 'short' };
+  return `${start.toLocaleDateString('he-IL', opts)} – ${end.toLocaleDateString('he-IL', opts)}`;
 }
 
 function formatCurrency(amount) {

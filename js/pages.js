@@ -171,86 +171,249 @@ function renderCalDay(num, dateStr, data, otherMonth) {
   `;
 }
 
-function renderCustody(data) {
-  const dayNames = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+function renderCustody(data, previewWeekOffset = 0) {
   const { custodyPattern, weekSchedule, custodyStartDate } = data.settings;
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
 
-  const patternLabels = {
-    'alternating-weeks': 'שבועות מתחלפים',
-    'weekly': 'לוח שבועי קבוע',
-    'custom-alternating': 'לוח שבועי + שבועות מתחלפים'
-  };
+  const modes = [
+    {
+      id: 'alternating-weeks',
+      icon: '🔄',
+      title: 'שבועות מתחלפים',
+      desc: 'שבוע שלם אצל כל הורה, ואז מתחלף לשבוע הבא'
+    },
+    {
+      id: 'weekly',
+      icon: '📅',
+      title: 'לוח שבועי קבוע',
+      desc: 'אותם ימים בכל שבוע — למשל א\'–ד\' אצל הורה א, ה\'–ש\' אצל הורה ב'
+    },
+    {
+      id: 'manual',
+      icon: '✏️',
+      title: 'סידור ידני',
+      desc: 'בוחרים הורה לכל תאריך בנפרד — גמיש לחלוטין'
+    }
+  ];
+
+  if (custodyPattern === 'custom-alternating') {
+    modes.push({
+      id: 'custom-alternating',
+      icon: '⚙️',
+      title: 'לוח שבועי + שבועות מתחלפים',
+      desc: 'לוח ימים שמשתנה לפי שבוע או ב'
+    });
+  }
 
   return `
-    <div class="grid grid-2">
+    <form id="custody-form" class="custody-page">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">לוח משמורת שבועי</div>
+          <div class="card-title">איך עובדת המשמורת אצלכם?</div>
         </div>
-        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">
-          לחץ/י על יום כדי לשנות את ההורה האחראי. דפוס נוכחי: <strong>${patternLabels[custodyPattern] || custodyPattern}</strong>
-        </p>
-        <div class="week-grid">
-          ${dayNames.map((name, i) => {
-            const parent = weekSchedule[i] || 'a';
-            return `
-              <div class="week-day parent-${parent}" data-day="${i}">
-                <div class="day-name">${name}</div>
-                <div>${getParentName(data, parent)}</div>
-              </div>
-            `;
-          }).join('')}
+        <p class="custody-intro">בחרו את סוג הסידור. אחר כך תוכלו לערוך את הימים בצורה פשוטה וברורה.</p>
+        <div class="custody-mode-grid" role="radiogroup" aria-label="סוג סידור משמורת">
+          ${modes.map(mode => `
+            <label class="custody-mode-card ${custodyPattern === mode.id ? 'selected' : ''}">
+              <input type="radio" name="custodyPattern" value="${mode.id}" ${custodyPattern === mode.id ? 'checked' : ''}>
+              <span class="custody-mode-icon" aria-hidden="true">${mode.icon}</span>
+              <span class="custody-mode-title">${mode.title}</span>
+              <span class="custody-mode-desc">${mode.desc}</span>
+            </label>
+          `).join('')}
         </div>
       </div>
 
+      ${renderCustodyEditor(data, custodyPattern, parentA, parentB, previewWeekOffset)}
+
       <div class="card">
         <div class="card-header">
-          <div class="card-title">הגדרות משמורת</div>
+          <div class="card-title">תצוגה מקדימה</div>
         </div>
-        <form id="custody-form">
-          <div class="form-group">
-            <label class="form-label">דפוס משמורת</label>
-            <select class="form-select" name="custodyPattern">
-              <option value="alternating-weeks" ${custodyPattern === 'alternating-weeks' ? 'selected' : ''}>שבועות מתחלפים (שבוע א / שבוע ב)</option>
-              <option value="weekly" ${custodyPattern === 'weekly' ? 'selected' : ''}>לוח שבועי קבוע</option>
-              <option value="custom-alternating" ${custodyPattern === 'custom-alternating' ? 'selected' : ''}>לוח שבועי + שבועות מתחלפים</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">תאריך התחלת מחזור</label>
-            <input class="form-input" type="date" name="custodyStartDate" value="${custodyStartDate}">
-            <p class="form-hint">משמש לחישוב שבועות מתחלפים</p>
-          </div>
-          <button type="submit" class="btn btn-primary">שמור הגדרות</button>
-        </form>
-
-        <div style="margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border)">
-          <div class="card-title" style="margin-bottom:0.75rem">תצוגה מקדימה — השבוע</div>
-          ${getWeekPreview(data)}
-        </div>
+        <p class="custody-intro">כך תיראה המשמורת ב-${custodyPattern === 'manual' ? 'שבועיים הקרובים' : 'השבוע הקרוב'}.</p>
+        ${getWeekPreview(data, custodyPattern === 'manual' ? 14 : 7, 0)}
       </div>
+
+      <div class="custody-save-bar">
+        <button type="submit" class="btn btn-primary btn-lg">שמור הגדרות משמורת</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderParentPicker(data, type, id, currentParent) {
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
+  const attr = type === 'week' ? 'data-week-day' : 'data-manual-date';
+
+  return `
+    <div class="parent-picker" role="group" aria-label="בחירת הורה">
+      <button type="button" class="parent-pick parent-a ${currentParent === 'a' ? 'active' : ''}"
+              ${attr}="${id}" data-parent="a" aria-pressed="${currentParent === 'a'}">
+        ${parentA}
+      </button>
+      <button type="button" class="parent-pick parent-b ${currentParent === 'b' ? 'active' : ''}"
+              ${attr}="${id}" data-parent="b" aria-pressed="${currentParent === 'b'}">
+        ${parentB}
+      </button>
     </div>
   `;
 }
 
-function getWeekPreview(data) {
-  const today = new Date();
-  const day = today.getDay();
-  const sunday = new Date(today);
-  sunday.setDate(today.getDate() - day);
+function renderCustodyEditor(data, pattern, parentA, parentB, previewWeekOffset) {
+  const { weekSchedule, custodyStartDate, manualDates = {} } = data.settings;
 
-  let html = '<ul class="list">';
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(sunday);
-    d.setDate(sunday.getDate() + i);
+  if (pattern === 'alternating-weeks') {
+    return `
+      <div class="card custody-editor">
+        <div class="card-header">
+          <div class="card-title">הגדרת שבועות מתחלפים</div>
+        </div>
+        <div class="custody-info-box">
+          <p><strong>איך זה עובד?</strong> כל השבוע (ראשון–שבת) אצל הורה אחד, ובשבוע הבא אצל ההורה השני.</p>
+          <p>לדוגמה: השבוע כולו אצל <span class="badge badge-a">${parentA}</span>, השבוע הבא כולו אצל <span class="badge badge-b">${parentB}</span>.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="custodyStartDate">מתי מתחיל המחזור?</label>
+          <input class="form-input" type="date" id="custodyStartDate" name="custodyStartDate" value="${custodyStartDate}">
+          <p class="form-hint">בחרו תאריך שבו השבוע היה אצל ${parentA}. מהשבוע הבא זה יתחלף.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  if (pattern === 'weekly' || pattern === 'custom-alternating') {
+    const extraNote = pattern === 'custom-alternating'
+      ? '<p class="custody-info-note">במצב מתקדם זה: הלוח שבועי משתנה לפי שבוע א או שבוע ב.</p>'
+      : '';
+
+    return `
+      <div class="card custody-editor">
+        <div class="card-header">
+          <div class="card-title">לוח שבועי — בחרו הורה לכל יום</div>
+        </div>
+        <p class="custody-intro">לחצו על שם ההורה ליד כל יום. אותו סידור יחזור בכל שבוע.</p>
+        ${extraNote}
+        <div class="custody-quick-actions">
+          <button type="button" class="btn btn-outline btn-sm" data-custody-fill="a">כל השבוע → ${parentA}</button>
+          <button type="button" class="btn btn-outline btn-sm" data-custody-fill="b">כל השבוע → ${parentB}</button>
+        </div>
+        <ul class="custody-day-list">
+          ${DAY_NAMES.map((name, i) => {
+            const parent = weekSchedule[i] || 'a';
+            return `
+              <li class="custody-day-row">
+                <div class="custody-day-label">
+                  <span class="custody-day-name">יום ${name}</span>
+                </div>
+                ${renderParentPicker(data, 'week', i, parent)}
+              </li>
+            `;
+          }).join('')}
+        </ul>
+        ${pattern === 'custom-alternating' ? `
+          <div class="form-group" style="margin-top:1rem">
+            <label class="form-label" for="custodyStartDate">תאריך התחלת מחזור</label>
+            <input class="form-input" type="date" id="custodyStartDate" name="custodyStartDate" value="${custodyStartDate}">
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  if (pattern === 'manual') {
+    const weekStart = getCustodyWeekStart(previewWeekOffset);
+    const days = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      days.push(d);
+    }
+
+    const startStr = days[0].toISOString().split('T')[0];
+    const endStr = days[13].toISOString().split('T')[0];
+    const weekLabel = formatDateRange(startStr, endStr);
+
+    return `
+      <div class="card custody-editor">
+        <div class="card-header custody-editor-header">
+          <div class="card-title">סידור ידני — בחרו הורה לכל תאריך</div>
+          <div class="custody-week-nav">
+            <button type="button" class="btn btn-outline btn-sm" data-custody-week-nav="prev" aria-label="שבועיים קודמים">→</button>
+            <span class="custody-week-label">${weekLabel}</span>
+            <button type="button" class="btn btn-outline btn-sm" data-custody-week-nav="next" aria-label="שבועיים הבאים">←</button>
+          </div>
+        </div>
+        <p class="custody-intro">לחצו על שם ההורה ליד כל תאריך. שינויים נשמרים מיד.</p>
+        <div class="custody-quick-actions">
+          <button type="button" class="btn btn-outline btn-sm" data-custody-fill-week="a">כל התקופה → ${parentA}</button>
+          <button type="button" class="btn btn-outline btn-sm" data-custody-fill-week="b">כל התקופה → ${parentB}</button>
+          <button type="button" class="btn btn-outline btn-sm" data-custody-clear-manual">נקה בחירות ידניות</button>
+        </div>
+        <ul class="custody-day-list">
+          ${days.map(d => {
+            const dateStr = d.toISOString().split('T')[0];
+            const isManual = Boolean(manualDates[dateStr]);
+            const parent = isManual ? manualDates[dateStr] : (weekSchedule[d.getDay()] || 'a');
+            const isToday = dateStr === new Date().toISOString().split('T')[0];
+            return `
+              <li class="custody-day-row ${isToday ? 'is-today' : ''} ${isManual ? 'is-manual' : ''}">
+                <div class="custody-day-label">
+                  <span class="custody-day-name">${formatDateShort(dateStr)}</span>
+                  ${isManual ? '<span class="custody-manual-tag">ידני</span>' : ''}
+                </div>
+                ${renderParentPicker(data, 'manual', dateStr, parent)}
+              </li>
+            `;
+          }).join('')}
+        </ul>
+        <p class="form-hint">תאריכים שלא נבחרו ידנית ישתמשו בלוח השבועי הבסיסי (אפשר לערוך למטה).</p>
+        <details class="custody-weekly-fallback">
+          <summary>לוח שבועי בסיסי (לתאריכים שלא נבחרו)</summary>
+          <ul class="custody-day-list compact">
+            ${DAY_NAMES.map((name, i) => {
+              const parent = weekSchedule[i] || 'a';
+              return `
+                <li class="custody-day-row">
+                  <div class="custody-day-label"><span class="custody-day-name">יום ${name}</span></div>
+                  ${renderParentPicker(data, 'week', i, parent)}
+                </li>
+              `;
+            }).join('')}
+          </ul>
+        </details>
+      </div>
+    `;
+  }
+
+  return '';
+}
+
+function getCustodyWeekStart(offsetWeeks = 0) {
+  const today = new Date();
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() - today.getDay() + offsetWeeks * 7);
+  sunday.setHours(12, 0, 0, 0);
+  return sunday;
+}
+
+function getWeekPreview(data, days = 7, startOffset = 0) {
+  const start = getCustodyWeekStart(startOffset);
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  let html = '<ul class="custody-preview-list">';
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
     const dateStr = d.toISOString().split('T')[0];
     const custody = getCustodyForDate(data, dateStr);
+    const isManual = data.settings.custodyPattern === 'manual' && data.settings.manualDates?.[dateStr];
     html += `
-      <li class="list-item">
-        <div class="list-item-content">
-          <div class="list-item-title">${formatDateShort(dateStr)}</div>
-        </div>
+      <li class="custody-preview-row ${dateStr === todayStr ? 'is-today' : ''}">
+        <span class="custody-preview-date">${formatDateShort(dateStr)}</span>
         <span class="badge badge-${custody}">${getParentName(data, custody)}</span>
+        ${isManual ? '<span class="custody-manual-tag">ידני</span>' : ''}
       </li>
     `;
   }

@@ -44,23 +44,46 @@ function translateDbError(err) {
 
 function normalizeWeekSchedule(schedule) {
   const defaults = { 0: 'a', 1: 'a', 2: 'a', 3: 'b', 4: 'b', 5: 'b', 6: 'b' };
-  if (!schedule || typeof schedule !== 'object') return { ...defaults };
-  const result = { ...defaults };
+  const weekSchedule = { ...defaults };
+  let manualDates = {};
+
+  if (!schedule || typeof schedule !== 'object') {
+    return { weekSchedule, manualDates };
+  }
+
   Object.entries(schedule).forEach(([key, value]) => {
-    result[parseInt(key, 10)] = value;
+    if (key === '__manualDates' && value && typeof value === 'object') {
+      manualDates = { ...value };
+      return;
+    }
+    const day = parseInt(key, 10);
+    if (!Number.isNaN(day) && day >= 0 && day <= 6) {
+      weekSchedule[day] = value;
+    }
   });
-  return result;
+
+  return { weekSchedule, manualDates };
+}
+
+function buildWeekSchedulePayload(weekSchedule, manualDates = {}) {
+  const payload = { ...weekSchedule };
+  if (manualDates && Object.keys(manualDates).length > 0) {
+    payload.__manualDates = manualDates;
+  }
+  return payload;
 }
 
 function mapSettings(row, currentParent) {
   if (!row) return structuredClone(DEFAULT_DATA.settings);
+  const { weekSchedule, manualDates } = normalizeWeekSchedule(row.week_schedule);
   return {
     parentAName: row.parent_a_name,
     parentBName: row.parent_b_name,
     currentParent: currentParent || row.current_parent || 'a',
     custodyPattern: row.custody_pattern,
     custodyStartDate: row.custody_start_date,
-    weekSchedule: normalizeWeekSchedule(row.week_schedule)
+    weekSchedule,
+    manualDates
   };
 }
 
@@ -259,7 +282,7 @@ async function saveSettings(settings) {
       current_parent: settings.currentParent,
       custody_pattern: settings.custodyPattern,
       custody_start_date: settings.custodyStartDate,
-      week_schedule: settings.weekSchedule,
+      week_schedule: buildWeekSchedulePayload(settings.weekSchedule, settings.manualDates),
       updated_at: new Date().toISOString()
     });
     if (error) throw error;
@@ -271,7 +294,7 @@ async function saveSettings(settings) {
     parent_b_name: settings.parentBName,
     custody_pattern: settings.custodyPattern,
     custody_start_date: settings.custodyStartDate,
-    week_schedule: settings.weekSchedule,
+    week_schedule: buildWeekSchedulePayload(settings.weekSchedule, settings.manualDates),
     updated_at: new Date().toISOString()
   }).eq('family_id', familyId);
   if (settingsErr) throw settingsErr;

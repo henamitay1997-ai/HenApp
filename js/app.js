@@ -14,7 +14,7 @@ let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 let listenersReady = false;
 let loadedUserId = null;
-let pendingJoinCode = null;
+let custodyPreviewWeekOffset = 0;
 
 function captureJoinCodeFromUrl() {
   const match = window.location.hash.match(/^#join\/([A-Za-z0-9]+)/);
@@ -79,7 +79,7 @@ function render() {
       content.innerHTML = renderCalendar(appData, calYear, calMonth);
       break;
     case 'custody':
-      content.innerHTML = renderCustody(appData);
+      content.innerHTML = renderCustody(appData, custodyPreviewWeekOffset);
       break;
     case 'children':
       content.innerHTML = renderChildren(appData);
@@ -109,6 +109,28 @@ function render() {
 function scrollMessagesToBottom() {
   const thread = document.getElementById('message-thread');
   if (thread) thread.scrollTop = thread.scrollHeight;
+}
+
+async function saveCustodySettings(toastMsg) {
+  try {
+    await saveSettings(appData.settings);
+    await refreshData();
+    if (toastMsg) showToast(toastMsg, 'success');
+    render();
+  } catch (err) {
+    handleDbError(err);
+  }
+}
+
+function getManualWeekDates(offsetWeeks = 0) {
+  const weekStart = getCustodyWeekStart(offsetWeeks);
+  const dates = [];
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  return dates;
 }
 
 function getFormData(form) {
@@ -472,20 +494,58 @@ function setupEventListeners() {
       return;
     }
 
+    if (e.target.closest('[data-week-day]')) {
+      const btn = e.target.closest('[data-week-day]');
+      const day = parseInt(btn.dataset.weekDay, 10);
+      appData.settings.weekSchedule[day] = btn.dataset.parent;
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.closest('[data-manual-date]')) {
+      const btn = e.target.closest('[data-manual-date]');
+      if (!appData.settings.manualDates) appData.settings.manualDates = {};
+      appData.settings.manualDates[btn.dataset.manualDate] = btn.dataset.parent;
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.closest('[data-custody-fill]')) {
+      const parent = e.target.closest('[data-custody-fill]').dataset.custodyFill;
+      for (let i = 0; i < 7; i++) appData.settings.weekSchedule[i] = parent;
+      saveCustodySettings('הלוח השבועי עודכן');
+      return;
+    }
+
+    if (e.target.closest('[data-custody-fill-week]')) {
+      const parent = e.target.closest('[data-custody-fill-week]').dataset.custodyFillWeek;
+      if (!appData.settings.manualDates) appData.settings.manualDates = {};
+      getManualWeekDates(custodyPreviewWeekOffset).forEach(dateStr => {
+        appData.settings.manualDates[dateStr] = parent;
+      });
+      saveCustodySettings('התקופה עודכנה');
+      return;
+    }
+
+    if (e.target.closest('[data-custody-clear-manual]')) {
+      appData.settings.manualDates = {};
+      saveCustodySettings('הבחירות הידניות נוקו');
+      return;
+    }
+
+    if (e.target.closest('[data-custody-week-nav]')) {
+      const dir = e.target.closest('[data-custody-week-nav]').dataset.custodyWeekNav;
+      custodyPreviewWeekOffset += dir === 'next' ? 1 : -1;
+      render();
+      return;
+    }
+
     if (e.target.closest('.week-day')) {
       const dayEl = e.target.closest('.week-day');
       const day = parseInt(dayEl.dataset.day, 10);
       const current = appData.settings.weekSchedule[day] || 'a';
       appData.settings.weekSchedule[day] = current === 'a' ? 'b' : 'a';
-      (async () => {
-        try {
-          await saveSettings(appData.settings);
-          await refreshData();
-          render();
-        } catch (err) {
-          handleDbError(err);
-        }
-      })();
+      saveCustodySettings();
       return;
     }
 
@@ -494,12 +554,20 @@ function setupEventListeners() {
 
   document.getElementById('topbar-actions').addEventListener('click', handleContentClick);
 
+  document.getElementById('content').addEventListener('change', e => {
+    if (e.target.name === 'custodyPattern' && e.target.closest('#custody-form')) {
+      appData.settings.custodyPattern = e.target.value;
+      custodyPreviewWeekOffset = 0;
+      saveCustodySettings();
+    }
+  });
+
   document.getElementById('content').addEventListener('submit', e => {
     if (e.target.id === 'custody-form') {
       e.preventDefault();
       const fd = getFormData(e.target);
-      appData.settings.custodyPattern = fd.custodyPattern;
-      appData.settings.custodyStartDate = fd.custodyStartDate;
+      appData.settings.custodyPattern = fd.custodyPattern || appData.settings.custodyPattern;
+      if (fd.custodyStartDate) appData.settings.custodyStartDate = fd.custodyStartDate;
       (async () => {
         try {
           showLoading(true);

@@ -446,7 +446,14 @@ body {
 .btn-secondary:hover { background: var(--border); }
 .btn-danger { background: var(--danger-bg); color: var(--danger); border: 1px solid #fecaca; }
 .btn-danger:hover { background: #fee2e2; }
-.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.82rem; }
+.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.82rem; min-height: 36px; }
+.btn-lg { padding: 0.85rem 1.5rem; font-size: 1rem; min-height: 48px; width: 100%; }
+.btn-outline {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-outline:hover { background: var(--surface-2); border-color: var(--primary); }
 .btn-icon { padding: 0.4rem 0.55rem; }
 
 /* Forms */
@@ -623,6 +630,249 @@ body {
 .week-day.parent-a { background: var(--parent-a-bg); border-color: var(--parent-a); color: var(--parent-a); }
 .week-day.parent-b { background: var(--parent-b-bg); border-color: var(--parent-b); color: var(--parent-b); }
 .week-day:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+
+/* Custody page — redesigned */
+.custody-page { display: flex; flex-direction: column; gap: 1rem; }
+
+.custody-intro {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.custody-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.custody-mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 1rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  transition: all 0.15s;
+  min-height: 120px;
+}
+
+.custody-mode-card input { position: absolute; opacity: 0; pointer-events: none; }
+.custody-mode-card:hover { border-color: var(--primary); background: var(--primary-light); }
+.custody-mode-card.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.custody-mode-icon { font-size: 1.5rem; }
+.custody-mode-title { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+.custody-mode-desc { font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; }
+
+.custody-info-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.custody-info-box p { margin: 0 0 0.5rem; }
+.custody-info-box p:last-child { margin-bottom: 0; }
+.custody-info-note { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+
+.custody-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.custody-day-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.custody-day-list.compact { margin-top: 0.75rem; }
+
+.custody-day-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.custody-day-row.is-today {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.custody-day-row.is-manual {
+  border-right: 3px solid var(--primary);
+}
+
+.custody-day-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.custody-day-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.custody-manual-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.parent-picker {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.parent-pick {
+  min-height: 44px;
+  min-width: 88px;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  background: var(--surface-2);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text-muted);
+}
+
+.parent-pick.parent-a.active {
+  background: var(--parent-a-bg);
+  border-color: var(--parent-a);
+  color: var(--parent-a);
+}
+
+.parent-pick.parent-b.active {
+  background: var(--parent-b-bg);
+  border-color: var(--parent-b);
+  color: var(--parent-b);
+}
+
+.parent-pick:not(.active):hover {
+  border-color: var(--text-muted);
+}
+
+.custody-editor-header {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.custody-week-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.custody-week-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  min-width: 120px;
+  text-align: center;
+}
+
+.custody-weekly-fallback {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.custody-weekly-fallback summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.custody-preview-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.custody-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.custody-preview-row.is-today {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.custody-preview-date {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.custody-save-bar {
+  position: sticky;
+  bottom: calc(var(--bottom-nav-height, 64px) + 0.5rem);
+  z-index: 5;
+  padding: 0.25rem 0;
+}
+
+@media (max-width: 768px) {
+  .custody-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .custody-day-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .parent-picker {
+    width: 100%;
+  }
+
+  .parent-pick {
+    flex: 1;
+    min-width: 0;
+  }
+}
 
 /* Messages */
 .message-thread { display: flex; flex-direction: column; gap: 0.75rem; max-height: 500px; overflow-y: auto; padding: 0.5rem 0; }
