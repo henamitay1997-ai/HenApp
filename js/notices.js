@@ -25,6 +25,139 @@ function getNoticesAwaitingMyAck(data, myRole) {
   );
 }
 
+function getViolationNotices(data) {
+  return (data.parentNotices || []).filter(n => n.noticeType === 'violation');
+}
+
+function getViolationExpenseInfo(data, notice) {
+  if (!notice?.expenseId) return null;
+  return (data.expenses || []).find(e => e.id === notice.expenseId) || null;
+}
+
+function getViolationPenaltyLabel(data, notice) {
+  if (!notice.hasPenalty || !notice.penaltyAmount) return 'ללא קנס';
+  const exp = getViolationExpenseInfo(data, notice);
+  const amount = formatCurrency(notice.penaltyAmount);
+  if (!exp) return `${amount} — נרשם בהוצאות`;
+  if (exp.approvalStatus === 'approved') return `${amount} — קנס אושר`;
+  if (exp.approvalStatus === 'rejected') return `${amount} — קנס נדחה`;
+  return `${amount} — ממתין לאישור קנס`;
+}
+
+function isViolationAcknowledged(notice) {
+  return notice.status === 'acknowledged' || !!notice.acknowledgedBy;
+}
+
+function buildViolationsReportRows(data) {
+  return getViolationNotices(data)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''))
+    .map(n => {
+      const exp = getViolationExpenseInfo(data, n);
+      return {
+        id: n.id,
+        date: n.date,
+        time: n.time || '',
+        title: n.title,
+        description: n.description || '',
+        reportedBy: getParentName(data, n.createdBy),
+        reportedByRole: n.createdBy,
+        violator: n.violatorRole ? getParentName(data, n.violatorRole) : '—',
+        violatorRole: n.violatorRole || '',
+        child: n.childId ? getChildName(data, n.childId) : '—',
+        location: n.location || '',
+        acknowledged: isViolationAcknowledged(n),
+        acknowledgedBy: n.acknowledgedBy ? getParentName(data, n.acknowledgedBy) : '—',
+        acknowledgedAt: n.acknowledgedAt || '',
+        penaltyLabel: getViolationPenaltyLabel(data, n),
+        penaltyAmount: n.penaltyAmount || null,
+        expenseApprovalStatus: exp?.approvalStatus || (n.expenseId ? 'pending' : null),
+        createdAt: n.createdAt || ''
+      };
+    });
+}
+
+function renderViolationsArchiveSection(data) {
+  const violations = getViolationNotices(data).sort((a, b) =>
+    (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || '')
+  );
+  const acknowledged = violations.filter(isViolationAcknowledged);
+  const pending = violations.filter(n => n.status === 'active' && n.requiresAck && !n.acknowledgedBy);
+
+  if (!violations.length) {
+    return `
+      <div class="card violations-archive-card" style="margin-bottom:1.25rem">
+        <div class="card-header">
+          <div>
+            <div class="card-title">⚠️ יומן הפרות משמורת</div>
+            <div class="card-subtitle">דיווחים מאושרים נשמרים כאן לגיבוי ותיעוד</div>
+          </div>
+        </div>
+        <p style="color:var(--text-muted);font-size:0.9rem;margin:0">אין דיווחי הפרה עדיין. לחצו «הפרת משמורת» לדיווח חדש.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card violations-archive-card" style="margin-bottom:1.25rem">
+      <div class="card-header violations-archive-header">
+        <div>
+          <div class="card-title">⚠️ יומן הפרות משמורת</div>
+          <div class="card-subtitle">${acknowledged.length} מאושרות על ידי ההורה השני${pending.length ? ` · ${pending.length} ממתינות לאישור` : ''}</div>
+        </div>
+        <div class="violations-export-actions">
+          <button type="button" class="btn btn-sm btn-primary" data-action="download-violations-pdf">📄 דוח PDF</button>
+          <button type="button" class="btn btn-sm btn-secondary" data-action="export-violations-json">💾 גיבוי JSON</button>
+        </div>
+      </div>
+
+      ${pending.length ? `
+        <div class="violations-archive-block">
+          <div class="violations-archive-label">ממתין לאישור ההורה השני (${pending.length})</div>
+          <ul class="notice-list violations-archive-list">
+            ${pending.map(n => renderViolationArchiveRow(data, n)).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
+      ${acknowledged.length ? `
+        <div class="violations-archive-block">
+          <div class="violations-archive-label">מאושרות ומתועדות (${acknowledged.length})</div>
+          <ul class="notice-list violations-archive-list">
+            ${acknowledged.map(n => renderViolationArchiveRow(data, n)).join('')}
+          </ul>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderViolationArchiveRow(data, n) {
+  const acked = isViolationAcknowledged(n);
+  const violatorName = n.violatorRole ? getParentName(data, n.violatorRole) : '—';
+  return `
+    <li class="notice-list-row violations-archive-row ${acked ? 'is-acknowledged' : 'needs-ack'}">
+      <div class="notice-list-icon">⚠️</div>
+      <div class="notice-list-body">
+        <div class="notice-list-title">${escapeHtml(n.title)}</div>
+        <div class="notice-list-meta">
+          ${formatDate(n.date)}${n.time ? ' · ' + n.time : ''}
+          · דווח ע"י ${getParentName(data, n.createdBy)}
+          · מפר: <strong>${escapeHtml(violatorName)}</strong>
+          ${n.childId ? ' · ' + escapeHtml(getChildName(data, n.childId)) : ''}
+        </div>
+        ${n.description ? `<div class="notice-list-desc">${escapeHtml(n.description)}</div>` : ''}
+        ${n.location ? `<div class="notice-list-meta">מיקום: ${escapeHtml(n.location)}</div>` : ''}
+        <div class="notice-penalty-tag">${getViolationPenaltyLabel(data, n)}</div>
+        ${acked ? `
+          <div class="notice-acked">
+            ✓ אושר ע"י ${getParentName(data, n.acknowledgedBy)} · ${formatDateTime(n.acknowledgedAt)}
+          </div>
+        ` : '<div class="notice-waiting-ack">ממתין לאישור / לידיעת ההורה השני</div>'}
+      </div>
+    </li>
+  `;
+}
+
 function renderNoticesPage(data) {
   const myRole = typeof getMySenderRole === 'function' ? getMySenderRole() : 'a';
   const notices = [...(data.parentNotices || [])].sort((a, b) =>
@@ -55,6 +188,8 @@ function renderNoticesPage(data) {
         </ul>
       </div>
     ` : ''}
+
+    ${renderViolationsArchiveSection(data)}
 
     <div class="notice-presets card" style="margin-bottom:1.25rem">
       <div class="card-title" style="margin-bottom:0.75rem">תזכורות נפוצות</div>
@@ -98,9 +233,11 @@ function renderNoticeRow(data, n, myRole, compact) {
         </div>
         ${n.withPerson ? `<div class="notice-list-meta">אצל: ${escapeHtml(n.withPerson)}</div>` : ''}
         ${n.location ? `<div class="notice-list-meta">מיקום: ${escapeHtml(n.location)}</div>` : ''}
+        ${n.noticeType === 'violation' && n.violatorRole ? `<div class="notice-list-meta">מפר: <strong>${escapeHtml(getParentName(data, n.violatorRole))}</strong></div>` : ''}
         ${n.description ? `<div class="notice-list-desc">${escapeHtml(n.description)}</div>` : ''}
-        ${n.hasPenalty && n.penaltyAmount ? `<div class="notice-penalty-tag">💰 קנס: ${formatCurrency(n.penaltyAmount)}${n.expenseId ? ' · נרשם בהוצאות' : ''}</div>` : ''}
-        ${acked ? `<div class="notice-acked">✓ נקרא/אושר ע"י ${getParentName(data, n.acknowledgedBy)}</div>` : ''}
+        ${n.noticeType === 'violation' ? `<div class="notice-penalty-tag">${getViolationPenaltyLabel(data, n)}</div>` : ''}
+        ${n.hasPenalty && n.penaltyAmount && n.noticeType !== 'violation' ? `<div class="notice-penalty-tag">💰 קנס: ${formatCurrency(n.penaltyAmount)}${n.expenseId ? ' · נרשם בהוצאות' : ''}</div>` : ''}
+        ${acked ? `<div class="notice-acked">✓ נקרא/אושר ע"י ${getParentName(data, n.acknowledgedBy)}${n.acknowledgedAt ? ' · ' + formatDateTime(n.acknowledgedAt) : ''}</div>` : ''}
       </div>
       <div class="notice-list-actions">
         ${needsAck ? `<button class="btn btn-sm btn-primary" data-action="ack-notice" data-id="${n.id}">קראתי / מאשר/ת</button>` : ''}
@@ -235,10 +372,17 @@ async function notifyPartnerAboutNotice(data, notice) {
   const myRole = typeof getMySenderRole === 'function' ? getMySenderRole() : 'a';
   const partnerRole = myRole === 'a' ? 'b' : 'a';
   const meta = getNoticeTypeMeta(notice.noticeType);
+  const updateType = notice.noticeType === 'reminder'
+    ? 'reminder'
+    : notice.noticeType === 'violation'
+      ? 'violation'
+      : 'schedule_notice';
   await createAppUpdate({
-    updateType: notice.noticeType === 'reminder' ? 'reminder' : 'schedule_notice',
+    updateType,
     title: `${meta.icon} ${meta.label}`,
-    body: `${notice.title} — ${formatDate(notice.date)}`,
+    body: notice.noticeType === 'violation' && notice.violatorRole
+      ? `${notice.title} — ${formatDate(notice.date)} · מפר: ${getParentName(data, notice.violatorRole)}`
+      : `${notice.title} — ${formatDate(notice.date)}`,
     linkPage: 'notices',
     referenceId: notice.id,
     targetParentRole: partnerRole

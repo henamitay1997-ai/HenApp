@@ -663,7 +663,8 @@ function renderUpdatesPage(data) {
                 u.updateType === 'consent_signature' ? '✍️'
                   : u.updateType === 'expense_approval' ? '💰'
                     : u.updateType === 'custody_change' ? '📅'
-                      : u.updateType === 'reminder' ? '🔔'
+                      : u.updateType === 'violation' ? '⚠️'
+                        : u.updateType === 'reminder' ? '🔔'
                       : u.updateType === 'schedule_notice' ? '📋'
                         : '🔔'
               }</div>

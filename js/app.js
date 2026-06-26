@@ -1119,7 +1119,19 @@ function handleContentClick(e) {
       (async () => {
         try {
           showLoading(true);
-          await acknowledgeParentNotice(id, getMySenderRole());
+          const notice = (appData.parentNotices || []).find(n => n.id === id);
+          const myRole = getMySenderRole();
+          await acknowledgeParentNotice(id, myRole);
+          if (notice?.noticeType === 'violation' && notice.createdBy !== myRole) {
+            await createAppUpdate({
+              updateType: 'violation',
+              title: '✅ דיווח הפרת משמורת אושר',
+              body: `${notice.title} — ${formatDate(notice.date)} · אושר ע"י ${getParentName(appData, myRole)}`,
+              linkPage: 'notices',
+              referenceId: notice.id,
+              targetParentRole: notice.createdBy
+            });
+          }
           await refreshData();
           showToast('סומן כנקרא / מאושר', 'success');
           render();
@@ -1231,6 +1243,12 @@ function handleContentClick(e) {
       break;
     case 'download-expense-pdf':
       downloadExpenseReportPdf(appData);
+      break;
+    case 'download-violations-pdf':
+      downloadViolationsReportPdf(appData);
+      break;
+    case 'export-violations-json':
+      exportViolationsBackupJson(appData);
       break;
     case 'export-data': {
       const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
