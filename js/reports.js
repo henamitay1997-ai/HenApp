@@ -9,6 +9,39 @@ function loadHtml2Pdf() {
   });
 }
 
+const PDF_MONTHS_HE = [
+  'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
+];
+
+function formatPdfDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T12:00:00'));
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return `${d.getDate()} ב${PDF_MONTHS_HE[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function formatPdfGeneratedDate() {
+  const d = new Date();
+  return `${d.getDate()} ב${PDF_MONTHS_HE[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function formatPdfMoney(amount) {
+  if (amount == null || amount === '') return '';
+  const n = Number(amount);
+  if (!n || Number.isNaN(n)) return '';
+  return `${n.toLocaleString('he-IL')} ש״ח`;
+}
+
+function formatViolationPenaltyPdf(row) {
+  if (!row.penaltyAmount) return 'ללא קנס';
+  const amount = formatPdfMoney(row.penaltyAmount);
+  if (row.expenseApprovalStatus === 'approved') return `${amount} · אושר`;
+  if (row.expenseApprovalStatus === 'rejected') return `${amount} · נדחה`;
+  if (row.expenseApprovalStatus === 'pending') return `${amount} · ממתין לאישור`;
+  return amount;
+}
+
 function pdfRow(label, value) {
   return `<tr>
     <td style="padding:4px 0;color:#64748b;font-size:12px">${label}</td>
@@ -201,90 +234,110 @@ async function downloadExpenseReportPdf(data) {
 }
 
 function getViolationsReportHtml(data, rows) {
-  const generatedAt = new Date().toLocaleString('he-IL', {
-    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
-  });
-  const familyName = data.family?.name || 'המשפחה שלנו';
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
   const acknowledgedCount = rows.filter(r => r.acknowledged).length;
   const pendingCount = rows.length - acknowledgedCount;
-  const totalPenalties = rows.reduce((sum, r) => sum + (r.penaltyAmount || 0), 0);
+  const totalPenalties = rows.reduce((sum, r) => sum + (Number(r.penaltyAmount) || 0), 0);
+  const penaltiesWithAmount = rows.filter(r => r.penaltyAmount).length;
 
-  const rowsHtml = rows.map(r => `
-    <tr>
-      <td style="padding:6px 4px;border-bottom:1px solid #e4e8f0;text-align:right;white-space:nowrap">${escapeHtml(formatDate(r.date))}${r.time ? ' ' + escapeHtml(r.time) : ''}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #e4e8f0;text-align:right">${escapeHtml(r.title)}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #e4e8f0;text-align:center">${escapeHtml(r.reportedBy)}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #e4e8f0;text-align:center">${escapeHtml(r.violator)}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #e4e8f0;text-align:center">${escapeHtml(r.child)}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #e4e8f0;text-align:center">${r.acknowledged ? escapeHtml(r.acknowledgedBy) : 'ממתין'}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #e4e8f0;text-align:center;white-space:nowrap">${escapeHtml(r.penaltyLabel)}</td>
-      <td style="padding:6px 4px;border-bottom:1px solid #e4e8f0;text-align:right;font-size:10px">${escapeHtml(r.description || '—')}</td>
-    </tr>
-  `).join('');
+  const rowsHtml = rows.map(r => {
+    const dateCell = [formatPdfDate(r.date), r.time].filter(Boolean).join(' · ');
+    const details = [r.description, r.location].filter(Boolean).join(' · ');
+    const ackCell = r.acknowledged
+      ? `${r.acknowledgedBy}${r.acknowledgedAt ? ' · ' + formatPdfDate(r.acknowledgedAt.slice(0, 10)) : ''}`
+      : 'ממתין לאישור';
+    return `
+      <tr>
+        <td style="padding:10px 8px;border:1px solid #cbd5e1;text-align:right;white-space:nowrap;vertical-align:top">${escapeHtml(dateCell)}</td>
+        <td style="padding:10px 8px;border:1px solid #cbd5e1;text-align:right;vertical-align:top">
+          <div style="font-weight:700;margin-bottom:4px">${escapeHtml(r.title)}</div>
+          ${details ? `<div style="font-size:11px;color:#475569;line-height:1.6">${escapeHtml(details)}</div>` : ''}
+          ${r.child && r.child !== '—' ? `<div style="font-size:11px;color:#475569;margin-top:4px">ילד/ה: ${escapeHtml(r.child)}</div>` : ''}
+        </td>
+        <td style="padding:10px 8px;border:1px solid #cbd5e1;text-align:center;vertical-align:top">${escapeHtml(r.reportedBy)}</td>
+        <td style="padding:10px 8px;border:1px solid #cbd5e1;text-align:center;vertical-align:top">${escapeHtml(r.violator)}</td>
+        <td style="padding:10px 8px;border:1px solid #cbd5e1;text-align:center;vertical-align:top;font-size:11px;line-height:1.5">${escapeHtml(ackCell)}</td>
+        <td style="padding:10px 8px;border:1px solid #cbd5e1;text-align:center;vertical-align:top;white-space:nowrap">${escapeHtml(formatViolationPenaltyPdf(r))}</td>
+      </tr>
+    `;
+  }).join('');
 
   return `
-    <div id="violations-report-pdf" dir="rtl" style="
-      font-family:'Heebo',Arial,sans-serif;
-      color:#1a2332;
-      padding:16px;
-      width:100%;
-      max-width:100%;
-      box-sizing:border-box;
+    <div id="violations-report-pdf" dir="rtl" lang="he" style="
+      font-family:'Heebo','David',Arial,sans-serif;
+      color:#0f172a;
       background:#fff;
-      line-height:1.4;
+      width:210mm;
+      max-width:210mm;
+      box-sizing:border-box;
+      padding:12mm 14mm;
+      line-height:1.75;
+      font-size:13px;
+      letter-spacing:0;
+      word-spacing:normal;
     ">
-      <div style="text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #e4e8f0">
-        <div style="font-size:13px;color:#64748b;margin-bottom:4px">הורים ביחד</div>
-        <h1 style="margin:0 0 6px;font-size:22px;font-weight:700">דוח הפרות זמן משמורת</h1>
-        <div style="font-size:12px;color:#64748b">${escapeHtml(familyName)} | ${escapeHtml(generatedAt)}</div>
-      </div>
+      <div style="border:2px solid #1e293b;padding:3mm">
+        <div style="outline:1px solid #94a3b8;outline-offset:3px;padding:8mm 7mm">
 
-      <table style="width:100%;border-collapse:separate;border-spacing:10px 0;margin-bottom:16px;table-layout:fixed">
-        <tr>
-          <td style="width:33%;vertical-align:top;background:#fef2f2;border:2px solid #fca5a5;border-radius:8px;padding:12px;text-align:center">
-            <div style="font-size:12px;color:#991b1b">סה"כ דיווחים</div>
-            <div style="font-size:22px;font-weight:800">${rows.length}</div>
-          </td>
-          <td style="width:33%;vertical-align:top;background:#ecfdf5;border:2px solid #86efac;border-radius:8px;padding:12px;text-align:center">
-            <div style="font-size:12px;color:#166534">מאושרות</div>
-            <div style="font-size:22px;font-weight:800">${acknowledgedCount}</div>
-          </td>
-          <td style="width:33%;vertical-align:top;background:#fffbeb;border:2px solid #fcd34d;border-radius:8px;padding:12px;text-align:center">
-            <div style="font-size:12px;color:#92400e">ממתינות / קנסות</div>
-            <div style="font-size:22px;font-weight:800">${pendingCount}${totalPenalties ? ' · ' + formatCurrency(totalPenalties) : ''}</div>
-          </td>
-        </tr>
-      </table>
+          <header style="text-align:center;margin-bottom:18px;padding-bottom:14px;border-bottom:3px double #1e293b">
+            <div style="font-size:11px;color:#64748b;margin-bottom:8px;letter-spacing:0.06em">דוח רשמי לתיעוד וגיבוי</div>
+            <h1 style="margin:0 0 10px;font-size:20px;font-weight:700;line-height:1.5">דוח הפרות זמן משמורת</h1>
+            <div style="font-size:13px;color:#334155;line-height:1.7">
+              הורים: ${escapeHtml(parentA)} ו${escapeHtml(parentB)}
+            </div>
+            <div style="font-size:12px;color:#64748b;margin-top:6px">הופק בתאריך ${formatPdfGeneratedDate()}</div>
+          </header>
 
-      <h2 style="font-size:15px;margin:0 0 8px;font-weight:700">פירוט הפרות</h2>
-      <table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed">
-        <colgroup>
-          <col style="width:11%">
-          <col style="width:14%">
-          <col style="width:10%">
-          <col style="width:10%">
-          <col style="width:9%">
-          <col style="width:10%">
-          <col style="width:14%">
-          <col style="width:22%">
-        </colgroup>
-        <thead>
-          <tr style="background:#f8f9fc">
-            <th style="padding:8px 4px;text-align:right;border-bottom:2px solid #e4e8f0">תאריך</th>
-            <th style="padding:8px 4px;text-align:right;border-bottom:2px solid #e4e8f0">כותרת</th>
-            <th style="padding:8px 4px;text-align:center;border-bottom:2px solid #e4e8f0">דווח ע"י</th>
-            <th style="padding:8px 4px;text-align:center;border-bottom:2px solid #e4e8f0">מפר</th>
-            <th style="padding:8px 4px;text-align:center;border-bottom:2px solid #e4e8f0">ילד/ה</th>
-            <th style="padding:8px 4px;text-align:center;border-bottom:2px solid #e4e8f0">אושר ע"י</th>
-            <th style="padding:8px 4px;text-align:center;border-bottom:2px solid #e4e8f0">קנס</th>
-            <th style="padding:8px 4px;text-align:right;border-bottom:2px solid #e4e8f0">פרטים</th>
-          </tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:12px">
+            <tr>
+              <td style="width:25%;padding:12px;border:1px solid #cbd5e1;background:#f8fafc;text-align:center;vertical-align:top">
+                <div style="color:#475569;margin-bottom:6px">סה״כ דיווחים</div>
+                <div style="font-size:22px;font-weight:800">${rows.length}</div>
+              </td>
+              <td style="width:25%;padding:12px;border:1px solid #cbd5e1;background:#f0fdf4;text-align:center;vertical-align:top">
+                <div style="color:#166534;margin-bottom:6px">מאושרים</div>
+                <div style="font-size:22px;font-weight:800;color:#166534">${acknowledgedCount}</div>
+              </td>
+              <td style="width:25%;padding:12px;border:1px solid #cbd5e1;background:#fffbeb;text-align:center;vertical-align:top">
+                <div style="color:#92400e;margin-bottom:6px">ממתינים לאישור</div>
+                <div style="font-size:22px;font-weight:800;color:#92400e">${pendingCount}</div>
+              </td>
+              <td style="width:25%;padding:12px;border:1px solid #cbd5e1;background:#fef2f2;text-align:center;vertical-align:top">
+                <div style="color:#991b1b;margin-bottom:6px">סה״כ קנסות</div>
+                <div style="font-size:18px;font-weight:800;color:#991b1b;line-height:1.4">${penaltiesWithAmount ? formatPdfMoney(totalPenalties) : 'ללא'}</div>
+              </td>
+            </tr>
+          </table>
 
-      <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e4e8f0;font-size:10px;color:#64748b;text-align:center">
-        דוח גיבוי — נוצר אוטומטית מאפליקציית הורים ביחד
+          <h2 style="font-size:14px;margin:0 0 10px;font-weight:700;border-bottom:1px solid #cbd5e1;padding-bottom:6px">פירוט הפרות</h2>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+            <colgroup>
+              <col style="width:14%">
+              <col style="width:30%">
+              <col style="width:12%">
+              <col style="width:12%">
+              <col style="width:18%">
+              <col style="width:14%">
+            </colgroup>
+            <thead>
+              <tr style="background:#f1f5f9">
+                <th style="padding:9px 8px;border:1px solid #cbd5e1;text-align:right;font-weight:700">תאריך</th>
+                <th style="padding:9px 8px;border:1px solid #cbd5e1;text-align:right;font-weight:700">תיאור האירוע</th>
+                <th style="padding:9px 8px;border:1px solid #cbd5e1;text-align:center;font-weight:700">דווח ע״י</th>
+                <th style="padding:9px 8px;border:1px solid #cbd5e1;text-align:center;font-weight:700">מפר</th>
+                <th style="padding:9px 8px;border:1px solid #cbd5e1;text-align:center;font-weight:700">אישור ההורה השני</th>
+                <th style="padding:9px 8px;border:1px solid #cbd5e1;text-align:center;font-weight:700">קנס</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+
+          <footer style="margin-top:16px;padding-top:10px;border-top:1px solid #cbd5e1;font-size:10px;color:#64748b;text-align:center;line-height:1.7">
+            מסמך תיעוד פנימי — ניתן להדפיס או לשמור לגיבוי
+          </footer>
+
+        </div>
       </div>
     </div>
   `;
@@ -300,15 +353,17 @@ async function downloadViolationsReportPdf(data) {
   }
 
   const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
   host.style.cssText = [
     'position:fixed',
     'top:0',
     'left:0',
-    'width:277mm',
+    'width:210mm',
     'background:#fff',
     'z-index:100001',
     'overflow:visible',
-    'box-sizing:border-box'
+    'box-sizing:border-box',
+    'pointer-events:none'
   ].join(';');
 
   host.innerHTML = getViolationsReportHtml(data, rows);
@@ -320,33 +375,61 @@ async function downloadViolationsReportPdf(data) {
   try {
     showLoading(true);
     if (document.fonts?.ready) await document.fonts.ready;
-    await new Promise(resolve => setTimeout(resolve, 400));
+    await new Promise(resolve => setTimeout(resolve, 500));
     await loadHtml2Pdf();
 
-    const canvasWidth = element.scrollWidth;
-    const canvasHeight = element.scrollHeight;
+    element.style.width = '210mm';
+    element.style.maxWidth = '210mm';
+    const rect = element.getBoundingClientRect();
+    const captureWidth = Math.max(Math.round(rect.width), 794);
+    const captureHeight = Math.max(Math.round(element.scrollHeight), Math.round(rect.height), 1123);
 
-    await html2pdf().set({
-      margin: [8, 8, 8, 8],
-      filename: `violations-report-${dateStr}.pdf`,
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        letterRendering: true,
-        scrollX: 0,
-        scrollY: 0,
-        x: 0,
-        y: 0,
-        width: canvasWidth,
-        height: canvasHeight,
-        windowWidth: canvasWidth,
-        windowHeight: canvasHeight
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-      pagebreak: { mode: ['css', 'legacy'] }
-    }).from(element).save();
+    const canvas = await html2pdf()
+      .set({
+        margin: 0,
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          width: captureWidth,
+          height: captureHeight,
+          windowWidth: captureWidth,
+          windowHeight: captureHeight
+        }
+      })
+      .from(element)
+      .toCanvas()
+      .get('canvas');
 
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) throw new Error('PDF library missing');
+
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 8;
+    const contentW = pageW - margin * 2;
+    const imgW = contentW;
+    const imgH = (canvas.height * imgW) / canvas.width;
+    const imgData = canvas.toDataURL('image/jpeg', 0.96);
+
+    let heightLeft = imgH;
+    let position = margin;
+    pdf.addImage(imgData, 'JPEG', margin, position, imgW, imgH);
+    heightLeft -= (pageH - margin * 2);
+
+    while (heightLeft > 0) {
+      pdf.addPage();
+      position = margin - (imgH - heightLeft);
+      pdf.addImage(imgData, 'JPEG', margin, position, imgW, imgH);
+      heightLeft -= (pageH - margin * 2);
+    }
+
+    pdf.save(`דוח-הפרות-משמורת-${dateStr}.pdf`);
     showToast('דוח ההפרות הורד בהצלחה', 'success');
   } catch (err) {
     console.error(err);
