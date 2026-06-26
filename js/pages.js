@@ -135,19 +135,24 @@ function renderCalendar(data, year, month) {
   }
 
   return `
-    <div class="card">
+    <div class="card calendar-card" id="calendar-card">
       <div class="calendar-header">
         <div class="calendar-nav">
           <button class="btn btn-secondary btn-sm" data-cal-nav="prev">←</button>
           <span class="calendar-month-title">${monthNames[month]} ${year}</span>
           <button class="btn btn-secondary btn-sm" data-cal-nav="next">→</button>
         </div>
-        <div style="display:flex;gap:0.5rem;align-items:center;font-size:0.85rem">
+        <div class="calendar-header-actions">
+          <button type="button" class="btn btn-outline btn-sm" data-cal-print title="הדפסת לוח חודשי">🖨️ הדפסה</button>
+          <button type="button" class="btn btn-outline btn-sm" data-cal-pdf title="שמירה כקובץ PDF">📄 PDF</button>
+        </div>
+        <div class="calendar-legend">
           <span class="badge badge-a">${getParentName(data, 'a')}</span>
           <span class="badge badge-b">${getParentName(data, 'b')}</span>
+          <span class="calendar-legend-holiday"><span class="cal-holiday-bar major">חג</span></span>
         </div>
       </div>
-      <div class="calendar-grid">
+      <div class="calendar-grid" id="calendar-grid">
         ${dayNames.map(d => `<div class="cal-day-name">${d}</div>`).join('')}
         ${cells}
       </div>
@@ -155,18 +160,74 @@ function renderCalendar(data, year, month) {
   `;
 }
 
-function renderCalDay(num, dateStr, data, otherMonth) {
+function renderCalDay(num, dateStr, data, otherMonth, options = {}) {
   const today = new Date().toISOString().split('T')[0];
   const custody = getCustodyForDate(data, dateStr);
   const events = data.events.filter(e => e.date === dateStr);
   const isToday = dateStr === today;
+  const holidays = typeof getHolidaysForDate === 'function' ? getHolidaysForDate(dateStr) : [];
+  const parentName = getParentName(data, custody);
+  const holidayHtml = holidays.map(h => `
+    <div class="cal-holiday-bar ${getHolidayBarClass(h)}" title="${h.name}">${h.name}</div>
+  `).join('');
+  const eventsHtml = options.print
+    ? events.map(e => `<div class="cal-event-dot">${e.title}</div>`).join('')
+    : `${events.slice(0, 2).map(e => `<div class="cal-event-dot">${e.title}</div>`).join('')}
+       ${events.length > 2 ? `<div class="cal-event-dot">+${events.length - 2} עוד</div>` : ''}`;
 
   return `
-    <div class="cal-day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} custody-${custody}${events.length ? ' has-events' : ''}"
-         data-date="${dateStr}" title="${getParentName(data, custody)}">
+    <div class="cal-day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} custody-${custody}${events.length ? ' has-events' : ''}${holidays.length ? ' has-holiday' : ''}"
+         ${options.print ? '' : `data-date="${dateStr}"`} title="${parentName}${holidays.length ? ' · ' + holidays.map(h => h.name).join(', ') : ''}">
       <div class="cal-day-num">${num}</div>
-      ${events.slice(0, 2).map(e => `<div class="cal-event-dot">${e.title}</div>`).join('')}
-      ${events.length > 2 ? `<div class="cal-event-dot">+${events.length - 2} עוד</div>` : ''}
+      ${holidayHtml}
+      ${eventsHtml}
+    </div>
+  `;
+}
+
+function renderCalendarPrintSheet(data, year, month) {
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startPad = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  const dayNames = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+  let cells = '';
+
+  const prevMonth = new Date(year, month, 0);
+  for (let i = startPad - 1; i >= 0; i--) {
+    const d = prevMonth.getDate() - i;
+    const dateStr = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells += renderCalDay(d, dateStr, data, true, { print: true });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells += renderCalDay(d, dateStr, data, false, { print: true });
+  }
+  const totalCells = startPad + daysInMonth;
+  const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  const nextMonth = new Date(year, month + 1, 1);
+  for (let d = 1; d <= remaining; d++) {
+    const dateStr = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells += renderCalDay(d, dateStr, data, true, { print: true });
+  }
+
+  return `
+    <div class="calendar-print-sheet">
+      <div class="calendar-print-header">
+        <h1>הורים ביחד — לוח משמורת</h1>
+        <h2>${monthNames[month]} ${year}</h2>
+        <div class="calendar-print-legend">
+          <span><span class="print-swatch custody-a"></span> ${getParentName(data, 'a')}</span>
+          <span><span class="print-swatch custody-b"></span> ${getParentName(data, 'b')}</span>
+          <span><span class="cal-holiday-bar major">חג</span> חגים בישראל</span>
+        </div>
+      </div>
+      <div class="calendar-grid calendar-grid-print">
+        ${dayNames.map(d => `<div class="cal-day-name">${d}</div>`).join('')}
+        ${cells}
+      </div>
+      <p class="calendar-print-footer">הודפס מ־הורים ביחד · ${new Date().toLocaleDateString('he-IL')}</p>
     </div>
   `;
 }

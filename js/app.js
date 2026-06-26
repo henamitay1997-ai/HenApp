@@ -77,6 +77,10 @@ function render() {
       break;
     case 'calendar':
       content.innerHTML = renderCalendar(appData, calYear, calMonth);
+      loadCalendarHolidays().then(() => {
+        const page = (window.location.hash.slice(1) || 'dashboard');
+        if (page === 'calendar') render();
+      });
       break;
     case 'custody':
       content.innerHTML = renderCustody(appData, custodyPreviewWeekOffset);
@@ -105,6 +109,96 @@ function render() {
 
   document.getElementById('topbar-actions').innerHTML = actionsHtml;
   closeSidebar();
+}
+
+async function loadCalendarHolidays() {
+  const years = new Set([calYear]);
+  if (calMonth === 0) years.add(calYear - 1);
+  if (calMonth === 11) years.add(calYear + 1);
+  await Promise.all([...years].map(y => ensureHolidaysForYear(y)));
+}
+
+function getCalendarPrintHtml() {
+  const base = window.location.href.replace(/[#?].*$/, '').replace(/[^/]+$/, '');
+  return `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>לוח משמורת</title>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="${base}css/styles.css?v=7">
+  <style>
+    body { margin: 0; padding: 16px; font-family: Heebo, sans-serif; background: #fff; }
+    @page { size: A4 landscape; margin: 12mm; }
+  </style>
+</head>
+<body>
+  ${renderCalendarPrintSheet(appData, calYear, calMonth)}
+  <script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`;
+}
+
+async function ensureHtml2Pdf() {
+  if (typeof html2pdf !== 'undefined') return true;
+  await new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('pdf lib'));
+    document.head.appendChild(script);
+  });
+  return typeof html2pdf !== 'undefined';
+}
+
+async function downloadCalendarPdf() {
+  try {
+    showLoading(true);
+    const ready = await ensureHtml2Pdf();
+    if (!ready) throw new Error('pdf lib missing');
+  } catch (_) {
+    showLoading(false);
+    showToast('לא ניתן לטעון את כלי ה-PDF — נסי הדפסה ובחרי "שמור כ-PDF"');
+    return;
+  }
+
+  const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  const container = document.createElement('div');
+  container.innerHTML = renderCalendarPrintSheet(appData, calYear, calMonth);
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = '1100px';
+  document.body.appendChild(container);
+
+  try {
+    showLoading(true);
+    await html2pdf().set({
+      margin: [8, 8, 8, 8],
+      filename: `לוח-משמורת-${monthNames[calMonth]}-${calYear}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    }).from(container.firstElementChild).save();
+    showToast('הקובץ נשמר', 'success');
+  } catch (err) {
+    console.error(err);
+    showToast('שגיאה ביצירת PDF — נסי הדפסה ובחרי "שמור כ-PDF"');
+  } finally {
+    document.body.removeChild(container);
+    showLoading(false);
+  }
+}
+
+function printCalendarMonth() {
+  const win = window.open('', '_blank', 'noopener,noreferrer');
+  if (!win) {
+    showToast('לא ניתן לפתוח חלון הדפסה — בדקי חסימת חלונות קופצים');
+    return;
+  }
+  win.document.open();
+  win.document.write(getCalendarPrintHtml());
+  win.document.close();
 }
 
 function scrollMessagesToBottom() {
@@ -634,6 +728,16 @@ function setupEventListeners() {
         if (calMonth > 11) { calMonth = 0; calYear++; }
       }
       render();
+      return;
+    }
+
+    if (e.target.closest('[data-cal-print]')) {
+      printCalendarMonth();
+      return;
+    }
+
+    if (e.target.closest('[data-cal-pdf]')) {
+      downloadCalendarPdf();
       return;
     }
 
