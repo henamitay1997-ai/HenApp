@@ -56,7 +56,7 @@ function formatDate(dateStr) {
 function formatDateShort(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T12:00:00'));
-  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' });
+  return d.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'short' });
 }
 
 function formatCurrency(amount) {
