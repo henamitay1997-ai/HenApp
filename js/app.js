@@ -494,7 +494,7 @@ function readVisitDetailFromDom(scope, key) {
   return {
     overnight: overnightEl ? overnightEl.checked : true,
     pickup: pickupEl?.value || '',
-    return: returnEl?.value || ''
+    returnTime: returnEl?.value || ''
   };
 }
 
@@ -540,10 +540,29 @@ function collectCustodyExtrasFromForm(form) {
     wc.days.forEach(day => {
       wc.dayDetails[day] = readVisitDetailFromDom('weekend', day);
     });
+    if (form.followUpEnabled) {
+      wc.followUpVisit = {
+        enabled: form.followUpEnabled.checked,
+        dayOfWeek: parseInt(form.followUpDay?.value ?? '5', 10),
+        weeksAfter: 1,
+        parent: form.followUpParent?.value || wc.parent,
+        pickup: form.followUpPickup?.value || '14:00',
+        returnTime: form.followUpReturn?.value || '18:00'
+      };
+    }
+    if (!wc.skippedFollowUpDates) wc.skippedFollowUpDates = [];
+    const flexRows = form.querySelectorAll('.monthly-visit-row[data-flex-idx]');
+    wc.flexVisits = [...flexRows].map(row => ({
+      date: row.querySelector('[data-flex-field="date"]')?.value || '',
+      parent: row.querySelector('[data-flex-field="parent"]')?.value || wc.parent,
+      overnight: false,
+      pickup: row.querySelector('[data-flex-field="pickup"]')?.value || '14:00',
+      returnTime: row.querySelector('[data-flex-field="returnTime"]')?.value || '18:00'
+    })).filter(v => v.date);
     appData.settings.weekendCycle = wc;
   }
 
-  const monthlyRows = form.querySelectorAll('.monthly-visit-row');
+  const monthlyRows = form.querySelectorAll('.monthly-visit-row[data-monthly-idx]');
   if (monthlyRows.length) {
     appData.settings.monthlyVisits = [...monthlyRows].map(row => {
       const idx = row.dataset.monthlyIdx;
@@ -574,7 +593,7 @@ function collectVisitHoursFromForm(form) {
         active: true,
         parent: form.querySelector(`[data-visit-hours-parent="${i}"]`)?.value || 'b',
         pickup: form.querySelector(`[data-visit-hours-pickup="${i}"]`)?.value || '14:00',
-        return: form.querySelector(`[data-visit-hours-return="${i}"]`)?.value || '18:00'
+        returnTime: form.querySelector(`[data-visit-hours-return="${i}"]`)?.value || '18:00'
       };
     }
   }
@@ -672,9 +691,57 @@ function setupEventListeners() {
         parent: 'b',
         overnight: false,
         pickup: '14:00',
-        return: '18:00'
+        returnTime: '18:00'
       });
       saveCustodySettings();
+      return;
+    }
+
+    if (e.target.closest('[data-add-flex-visit]')) {
+      if (!appData.settings.weekendCycle) appData.settings.weekendCycle = structuredClone(DEFAULT_DATA.settings.weekendCycle);
+      if (!appData.settings.weekendCycle.flexVisits) appData.settings.weekendCycle.flexVisits = [];
+      appData.settings.weekendCycle.flexVisits.push({
+        date: '',
+        parent: appData.settings.weekendCycle.parent || 'b',
+        overnight: false,
+        pickup: '14:00',
+        returnTime: '18:00'
+      });
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.closest('[data-remove-flex-visit]')) {
+      const idx = parseInt(e.target.closest('[data-remove-flex-visit]').dataset.removeFlexVisit, 10);
+      if (appData.settings.weekendCycle?.flexVisits) {
+        appData.settings.weekendCycle.flexVisits.splice(idx, 1);
+        saveCustodySettings();
+      }
+      return;
+    }
+
+    if (e.target.closest('[data-add-skip-date]')) {
+      const form = e.target.closest('#custody-form');
+      const dateInput = form?.querySelector('#newSkipDate');
+      const dateStr = dateInput?.value;
+      if (!dateStr) return;
+      if (!appData.settings.weekendCycle) appData.settings.weekendCycle = structuredClone(DEFAULT_DATA.settings.weekendCycle);
+      if (!appData.settings.weekendCycle.skippedFollowUpDates) appData.settings.weekendCycle.skippedFollowUpDates = [];
+      if (!appData.settings.weekendCycle.skippedFollowUpDates.includes(dateStr)) {
+        appData.settings.weekendCycle.skippedFollowUpDates.push(dateStr);
+        appData.settings.weekendCycle.skippedFollowUpDates.sort();
+      }
+      if (dateInput) dateInput.value = '';
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.closest('[data-remove-skip-date]')) {
+      const idx = parseInt(e.target.closest('[data-remove-skip-date]').dataset.removeSkipDate, 10);
+      if (appData.settings.weekendCycle?.skippedFollowUpDates) {
+        appData.settings.weekendCycle.skippedFollowUpDates.splice(idx, 1);
+        saveCustodySettings();
+      }
       return;
     }
 
@@ -764,13 +831,28 @@ function setupEventListeners() {
     if (e.target.matches('[data-visit-hours-pickup], [data-visit-hours-return]')) {
       collectVisitHoursFromForm(e.target.closest('#custody-form'));
       updateCustodyUi({ reRender: false, saveDelay: 900 });
+      return;
+    }
+
+    if (e.target.matches('[data-flex-field], #followUpPickup, #followUpReturn')) {
+      collectCustodyExtrasFromForm(e.target.closest('#custody-form') || document);
+      updateCustodyUi({ reRender: false, saveDelay: 900 });
     }
   });
 
   document.getElementById('content').addEventListener('change', e => {
-    if (e.target.matches('[data-monthly-field]')) {
+    if (e.target.matches('[data-monthly-field], [data-flex-field]')) {
       collectCustodyExtrasFromForm(e.target.closest('#custody-form') || document);
       updateCustodyUi({ reRender: false, saveDelay: 500 });
+      return;
+    }
+    if (e.target.matches('#followUpEnabled, #followUpDay, #followUpParent, #followUpPickup, #followUpReturn')) {
+      const fields = document.getElementById('follow-up-fields');
+      if (fields && e.target.id === 'followUpEnabled') {
+        fields.classList.toggle('is-hidden', !e.target.checked);
+      }
+      collectCustodyExtrasFromForm(e.target.closest('#custody-form') || document);
+      updateCustodyUi({ reRender: false, saveDelay: 400 });
       return;
     }
     if (e.target.matches('#visitHoursBaseParent, [data-visit-hours-parent]')) {

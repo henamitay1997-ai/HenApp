@@ -192,7 +192,10 @@ function mapSettings(row, currentParent) {
     dayDetails,
     week2DayDetails,
     manualDayDetails,
-    weekendCycle: weekendCycle || structuredClone(DEFAULT_DATA.settings.weekendCycle),
+    weekendCycle: {
+      ...structuredClone(DEFAULT_DATA.settings.weekendCycle),
+      ...(weekendCycle || {})
+    },
     monthlyVisits: monthlyVisits || [],
     visitHours: visitHours || structuredClone(DEFAULT_DATA.settings.visitHours)
   };

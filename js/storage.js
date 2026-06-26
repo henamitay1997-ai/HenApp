@@ -26,7 +26,17 @@ const DEFAULT_DATA = {
       intervalWeeks: 3,
       startDate: new Date().toISOString().split('T')[0],
       days: [4, 5, 6],
-      dayDetails: {}
+      dayDetails: {},
+      followUpVisit: {
+        enabled: false,
+        dayOfWeek: 5,
+        weeksAfter: 1,
+        parent: 'b',
+        pickup: '14:00',
+        returnTime: '18:00'
+      },
+      skippedFollowUpDates: [],
+      flexVisits: []
     },
     monthlyVisits: [],
     visitHours: {
@@ -66,7 +76,7 @@ function getBiweeklyWeekIndex(dateStr, custodyStartDate) {
 }
 
 function defaultDayDetail() {
-  return { overnight: true, pickup: '', return: '' };
+  return { overnight: true, pickup: '', returnTime: '' };
 }
 
 function normalizeDayDetail(raw) {
@@ -74,7 +84,7 @@ function normalizeDayDetail(raw) {
   return {
     overnight: raw.overnight !== false,
     pickup: raw.pickup || '',
-    return: raw.return || ''
+    returnTime: raw.returnTime || raw.return || ''
   };
 }
 
@@ -125,6 +135,38 @@ function getWeekendCycleParent(dateStr, weekendCycle) {
   return weekendCycle.offParent || null;
 }
 
+function getFlexVisitForDate(dateStr, flexVisits) {
+  if (!flexVisits?.length) return null;
+  return flexVisits.find(v => v.date === dateStr) || null;
+}
+
+function isFollowUpVisitDate(dateStr, weekendCycle) {
+  const fu = weekendCycle?.followUpVisit;
+  if (!fu?.enabled || !weekendCycle?.startDate) return false;
+  if ((weekendCycle.skippedFollowUpDates || []).includes(dateStr)) return false;
+
+  const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+  if (dayOfWeek !== (fu.dayOfWeek ?? 5)) return false;
+
+  const weeksAfter = fu.weeksAfter ?? 1;
+  const sat = getSaturdayOfWeekContaining(dateStr);
+  const refSat = new Date(sat);
+  refSat.setDate(sat.getDate() - weeksAfter * 7);
+  const refSatStr = refSat.toISOString().split('T')[0];
+  return isWeekendCycleWeek(refSatStr, weekendCycle);
+}
+
+function getFollowUpVisitForDate(dateStr, weekendCycle) {
+  if (!isFollowUpVisitDate(dateStr, weekendCycle)) return null;
+  const fu = weekendCycle.followUpVisit;
+  return {
+    parent: fu.parent || weekendCycle.parent,
+    overnight: false,
+    pickup: fu.pickup || '14:00',
+    returnTime: fu.returnTime || fu.return || '18:00'
+  };
+}
+
 function getVisitHoursDayConfig(visitHours, dayOfWeek) {
   const days = visitHours?.days || {};
   return days[dayOfWeek] ?? days[String(dayOfWeek)] ?? null;
@@ -142,6 +184,13 @@ function getCustodyForDate(data, dateStr) {
 
   const monthly = getMonthlyVisitForDate(dateStr, monthlyVisits);
   if (monthly) return monthly.parent;
+
+  if (custodyPattern === 'weekend-cycle') {
+    const flex = getFlexVisitForDate(dateStr, weekendCycle?.flexVisits);
+    if (flex) return flex.parent;
+    const followUp = getFollowUpVisitForDate(dateStr, weekendCycle);
+    if (followUp) return followUp.parent;
+  }
 
   if (custodyPattern === 'visit-hours') {
     const dayConfig = getVisitHoursDayConfig(visitHours, dayOfWeek);
@@ -203,15 +252,25 @@ function getCustodyDayInfo(data, dateStr) {
     const monthly = getMonthlyVisitForDate(dateStr, monthlyVisits);
     if (monthly && monthly.parent === parent) {
       detail = normalizeDayDetail(monthly);
-    } else if (custodyPattern === 'weekend-cycle' && isWeekendCycleWeek(dateStr, weekendCycle) && weekendCycle?.days?.includes(dayOfWeek) && weekendCycle.parent === parent) {
-      detail = getDayDetailMap({ dayDetails: weekendCycle.dayDetails || {} }, 'dayDetails', dayOfWeek);
+    } else if (custodyPattern === 'weekend-cycle') {
+      const flex = getFlexVisitForDate(dateStr, weekendCycle?.flexVisits);
+      if (flex && flex.parent === parent) {
+        detail = normalizeDayDetail(flex);
+      } else {
+        const followUp = getFollowUpVisitForDate(dateStr, weekendCycle);
+        if (followUp && followUp.parent === parent) {
+          detail = normalizeDayDetail(followUp);
+        } else if (isWeekendCycleWeek(dateStr, weekendCycle) && weekendCycle?.days?.includes(dayOfWeek) && weekendCycle.parent === parent) {
+          detail = getDayDetailMap({ dayDetails: weekendCycle.dayDetails || {} }, 'dayDetails', dayOfWeek);
+        }
+      }
     } else if (custodyPattern === 'visit-hours') {
       const dayConfig = getVisitHoursDayConfig(visitHours, dayOfWeek);
       if (dayConfig?.active) {
         detail = normalizeDayDetail({
           overnight: false,
           pickup: dayConfig.pickup || '14:00',
-          return: dayConfig.return || '18:00'
+          returnTime: dayConfig.returnTime || dayConfig.return || '18:00'
         });
       } else {
         detail = defaultDayDetail();
@@ -231,7 +290,7 @@ function getCustodyDayInfo(data, dateStr) {
 function formatCustodyTimeLabel(info) {
   if (info.overnight) return 'משמורת עם לינה';
   const pickup = info.pickup || '?';
-  const ret = info.return || '?';
+  const ret = info.returnTime || info.return || '?';
   return `ביקור ${pickup}–${ret}`;
 }
 

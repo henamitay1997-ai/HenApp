@@ -290,7 +290,7 @@ function renderParentPicker(data, type, id, currentParent) {
 function renderVisitHoursDayFields(data, day, config) {
   const parentA = getParentName(data, 'a');
   const parentB = getParentName(data, 'b');
-  const c = config || { parent: 'b', pickup: '14:00', return: '18:00' };
+  const c = config || { parent: 'b', pickup: '14:00', returnTime: '18:00' };
   return `
     <div class="visit-hours-day-fields-inner">
       <label class="visit-time-field">
@@ -306,7 +306,7 @@ function renderVisitHoursDayFields(data, day, config) {
       </label>
       <label class="visit-time-field">
         <span>שעת החזרה</span>
-        <input type="time" class="form-input" data-visit-hours-return="${day}" value="${c.return || '18:00'}">
+        <input type="time" class="form-input" data-visit-hours-return="${day}" value="${c.returnTime || c.return || '18:00'}">
       </label>
     </div>
   `;
@@ -333,7 +333,7 @@ function renderVisitHoursEditor(data, parentA, parentB) {
       <p class="custody-intro">סמנו ימים עם ביקור והזינו שעות:</p>
       <ul class="custody-day-list visit-hours-list">
         ${DAY_NAMES.map((name, i) => {
-          const day = vh.days[i] ?? vh.days[String(i)] ?? { active: false, parent: 'b', pickup: '14:00', return: '18:00' };
+          const day = vh.days[i] ?? vh.days[String(i)] ?? { active: false, parent: 'b', pickup: '14:00', returnTime: '18:00' };
           return `
             <li class="custody-day-row custody-day-expanded visit-hours-day ${day.active ? 'is-visit-active' : ''}">
               <label class="visit-day-toggle">
@@ -367,7 +367,7 @@ function renderDayVisitControls(scope, key, detail) {
         </label>
         <label class="visit-time-field">
           <span>שעת החזרה</span>
-          <input type="time" class="form-input" data-visit-return="${scope}" data-visit-key="${key}" value="${d.return || ''}">
+          <input type="time" class="form-input" data-visit-return="${scope}" data-visit-key="${key}" value="${d.returnTime || d.return || ''}">
         </label>
       </div>
     </div>
@@ -394,6 +394,117 @@ function renderWeekDayList(data, schedule, type, dayDetailsMap = null) {
         `;
       }).join('')}
     </ul>
+  `;
+}
+
+function renderFlexVisitsEditor(data) {
+  const wc = data.settings.weekendCycle || {};
+  const fu = wc.followUpVisit || { enabled: false, dayOfWeek: 5, parent: 'b', pickup: '14:00', returnTime: '18:00' };
+  const flexVisits = wc.flexVisits || [];
+  const skipped = wc.skippedFollowUpDates || [];
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
+
+  return `
+    <div class="card custody-editor" style="margin-top:1rem">
+      <div class="card-header">
+        <div class="card-title">ביקור שישי אחרי סופ״ש עם לינה</div>
+      </div>
+      <div class="custody-info-box">
+        <p><strong>דוגמה:</strong> אחרי סופ״ש שהילדים ישנים אצל האבא — בשבוע הבא, ביום שישי, הוא מגיע לביקור של כמה שעות.</p>
+        <p>התדירות נקבעת לפי "כל כמה שבועות" למעלה (למשל כל שבת שלישית). אפשר גם לבטל או להוסיף תאריכים בודדים למטה.</p>
+      </div>
+      <label class="visit-day-toggle" style="margin-bottom:0.75rem">
+        <input type="checkbox" id="followUpEnabled" name="followUpEnabled" ${fu.enabled ? 'checked' : ''}>
+        <span>הפעל ביקור שישי בשבוע שלאחר סופ״ש עם לינה</span>
+      </label>
+      <div class="follow-up-fields ${fu.enabled ? '' : 'is-hidden'}" id="follow-up-fields">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">יום הביקור</label>
+            <select class="form-select" id="followUpDay" name="followUpDay">
+              ${DAY_NAMES.map((name, i) => `<option value="${i}" ${(fu.dayOfWeek ?? 5) === i ? 'selected' : ''}>${name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">הורה בביקור</label>
+            <select class="form-select" id="followUpParent" name="followUpParent">
+              <option value="a" ${fu.parent === 'a' ? 'selected' : ''}>${parentA}</option>
+              <option value="b" ${fu.parent === 'b' ? 'selected' : ''}>${parentB}</option>
+            </select>
+          </div>
+        </div>
+        <div class="visit-times-row">
+          <label class="visit-time-field">
+            <span>שעת איסוף</span>
+            <input type="time" class="form-input" id="followUpPickup" name="followUpPickup" value="${fu.pickup || '14:00'}">
+          </label>
+          <label class="visit-time-field">
+            <span>שעת החזרה</span>
+            <input type="time" class="form-input" id="followUpReturn" name="followUpReturn" value="${fu.returnTime || fu.return || '18:00'}">
+          </label>
+        </div>
+      </div>
+
+      <h3 class="biweekly-week-title" style="margin-top:1rem">ביטול ביקור אוטומטי בתאריך</h3>
+      <p class="custody-intro">אם ביקור שישי אוטומטי לא קורה בפועל — הוסיפי את התאריך כאן.</p>
+      <ul class="skip-dates-list" id="skip-dates-list">
+        ${skipped.map((dateStr, idx) => `
+          <li class="skip-date-chip">
+            <span>${formatDateShort(dateStr)}</span>
+            <button type="button" class="btn btn-sm btn-danger" data-remove-skip-date="${idx}">×</button>
+          </li>
+        `).join('')}
+      </ul>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">תאריך לביטול</label>
+          <input type="date" class="form-input" id="newSkipDate">
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" data-add-skip-date>+ בטל ביקור בתאריך</button>
+      </div>
+
+      <h3 class="biweekly-week-title" style="margin-top:1rem">ביקורים נוספים בתאריך מסוים</h3>
+      <p class="custody-intro">כשהתדירות משתנה — הוסיפי ביקור חד-פעמי עם תאריך ושעות.</p>
+      <ul class="monthly-visits-list" id="flex-visits-list">
+        ${flexVisits.map((v, idx) => renderFlexVisitRow(data, v, idx)).join('')}
+      </ul>
+      <button type="button" class="btn btn-outline btn-sm" data-add-flex-visit>+ הוסף ביקור בתאריך</button>
+    </div>
+  `;
+}
+
+function renderFlexVisitRow(data, visit, idx) {
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
+  const d = normalizeDayDetail(visit);
+  return `
+    <li class="monthly-visit-row" data-flex-idx="${idx}">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">תאריך</label>
+          <input type="date" class="form-input" data-flex-field="date" data-flex-idx="${idx}" value="${visit.date || ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">הורה</label>
+          <select class="form-select" data-flex-field="parent" data-flex-idx="${idx}">
+            <option value="a" ${visit.parent === 'a' ? 'selected' : ''}>${parentA}</option>
+            <option value="b" ${visit.parent === 'b' ? 'selected' : ''}>${parentB}</option>
+          </select>
+        </div>
+      </div>
+      <div class="visit-times-row">
+        <label class="visit-time-field">
+          <span>שעת איסוף</span>
+          <input type="time" class="form-input" data-flex-field="pickup" data-flex-idx="${idx}" value="${d.pickup || '14:00'}">
+        </label>
+        <label class="visit-time-field">
+          <span>שעת החזרה</span>
+          <input type="time" class="form-input" data-flex-field="returnTime" data-flex-idx="${idx}" value="${d.returnTime || d.return || '18:00'}">
+        </label>
+      </div>
+      <button type="button" class="btn btn-sm btn-danger" data-remove-flex-visit="${idx}">הסר ביקור</button>
+    </li>
   `;
 }
 
@@ -519,7 +630,7 @@ function renderWeekendCycleEditor(data, parentA, parentB) {
         }).join('') || '<li class="custody-intro">סמנו לפחות יום אחד למעלה</li>'}
       </ul>
     </div>
-    ${renderMonthlyVisitsEditor(data)}
+    ${renderFlexVisitsEditor(data)}
   `;
 }
 
@@ -740,12 +851,18 @@ function getWeekPreview(data, days = 7, startOffset = 0) {
       : null;
     const isWeekendWeek = data.settings.custodyPattern === 'weekend-cycle'
       && isWeekendCycleWeek(dateStr, data.settings.weekendCycle);
+    const isFollowUp = data.settings.custodyPattern === 'weekend-cycle'
+      && isFollowUpVisitDate(dateStr, data.settings.weekendCycle);
+    const isFlexVisit = data.settings.custodyPattern === 'weekend-cycle'
+      && getFlexVisitForDate(dateStr, data.settings.weekendCycle?.flexVisits);
     const visitLabel = !dayInfo.overnight ? formatCustodyTimeLabel(dayInfo) : '';
     html += `
       <li class="custody-preview-row custody-parent-${dayInfo.parent} ${dateStr === todayStr ? 'is-today' : ''}">
         <span class="custody-preview-date">${formatDateShort(dateStr)}</span>
         ${biweeklyWeek ? `<span class="custody-cycle-tag">שבוע ${biweeklyWeek}</span>` : ''}
         ${isWeekendWeek ? '<span class="custody-cycle-tag">שבת פעילה</span>' : ''}
+        ${isFollowUp ? '<span class="custody-cycle-tag">ביקור אחרי סופ״ש</span>' : ''}
+        ${isFlexVisit ? '<span class="custody-cycle-tag">ביקור מיוחד</span>' : ''}
         ${!dayInfo.overnight ? '<span class="custody-visit-tag">ללא לינה</span>' : ''}
         <span class="badge badge-${dayInfo.parent}">${getParentName(data, dayInfo.parent)}</span>
         ${visitLabel ? `<span class="custody-time-tag">${visitLabel}</span>` : ''}
