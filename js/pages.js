@@ -12,8 +12,22 @@ function renderDashboard(data) {
   const noticesAwaiting = typeof getNoticesAwaitingMyAck === 'function'
     ? getNoticesAwaitingMyAck(data, myRole)
     : [];
+  const custodyAwaiting = typeof getCustodyRequestsAwaitingMyResponse === 'function'
+    ? getCustodyRequestsAwaitingMyResponse(data, myRole)
+    : [];
 
   return `
+    ${custodyAwaiting.length ? `
+      <div class="card expense-approval-card" style="margin-bottom:1.25rem">
+        <div class="card-header" style="align-items:center">
+          <div>
+            <div class="card-title">📅 ${custodyAwaiting.length} בקשות שינוי משמורת</div>
+            <div class="card-subtitle">ממתין לאישורך — חופשה או שינוי ליום שלא במשמורת שלך</div>
+          </div>
+          <a href="#custody" class="btn btn-primary">צפייה</a>
+        </div>
+      </div>
+    ` : ''}
     ${noticesAwaiting.length ? `
       <div class="card expense-approval-card" style="margin-bottom:1.25rem">
         <div class="card-header" style="align-items:center">
@@ -382,6 +396,7 @@ function renderCustody(data, previewWeekOffset = 0) {
   }
 
   return `
+    ${typeof renderCustodyChangeSection === 'function' ? renderCustodyChangeSection(data) : ''}
     <form id="custody-form" class="custody-page">
       <div class="card">
         <div class="card-header">

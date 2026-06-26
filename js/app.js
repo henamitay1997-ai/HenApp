@@ -98,6 +98,9 @@ function updateNavBadges() {
   const noticesCount = typeof getNoticesAwaitingMyAck === 'function'
     ? getNoticesAwaitingMyAck(appData, myRole).length
     : 0;
+  const custodyCount = typeof getCustodyRequestsAwaitingMyResponse === 'function'
+    ? getCustodyRequestsAwaitingMyResponse(appData, myRole).length
+    : 0;
 
   function setBadge(selector, count, title) {
     document.querySelectorAll(selector).forEach(link => {
@@ -118,6 +121,7 @@ function updateNavBadges() {
 
   setBadge('.nav-link[data-page="expenses"]', approvalCount, `${approvalCount} הוצאות ממתינות לאישורך`);
   setBadge('.nav-link[data-page="notices"]', noticesCount, `${noticesCount} תזכורות ממתינות`);
+  setBadge('.nav-link[data-page="custody"]', custodyCount, `${custodyCount} בקשות משמורת ממתינות`);
   setBadge('.nav-link[data-page="approvals"]', consentCount, `${consentCount} טפסים ממתינים לחתימתך`);
   setBadge('.nav-link[data-page="updates"]', updatesCount, `${updatesCount} עדכונים חדשים`);
 }
@@ -546,6 +550,110 @@ function handleExpenseForm(expense = null) {
   document.getElementById('modal-cancel')?.addEventListener('click', () => closeModal());
 }
 
+function handleCustodyChangeForm() {
+  openModal(
+    'בקשת שינוי משמורת',
+    typeof getCustodyChangeFormHtml === 'function' ? getCustodyChangeFormHtml(appData) : '<p>טוען...</p>',
+    `<button class="btn btn-primary" id="modal-save">שלח בקשה</button>
+     <button class="btn btn-secondary" id="modal-cancel">ביטול</button>`
+  );
+
+  document.getElementById('modal-save')?.addEventListener('click', async () => {
+    const form = document.getElementById('custody-change-form');
+    if (!form) return;
+    const data = getFormData(form);
+    const myRole = getMySenderRole();
+    const payload = {
+      title: data.title?.trim(),
+      date: data.date,
+      endDate: data.endDate || null,
+      childId: data.childId || null,
+      assignTo: data.assignTo || myRole,
+      reason: data.reason?.trim(),
+      requestedBy: myRole
+    };
+
+    if (!payload.title || !payload.date || !payload.reason) {
+      showToast('נא למלא כותרת, תאריך וסיבה');
+      return;
+    }
+    if (payload.endDate && payload.endDate < payload.date) {
+      showToast('תאריך הסיום חייב להיות אחרי תאריך ההתחלה');
+      return;
+    }
+
+    try {
+      showLoading(true);
+      const saved = await createCustodyChangeRequest(payload);
+      if (typeof notifyPartnerAboutCustodyRequest === 'function') {
+        await notifyPartnerAboutCustodyRequest(appData, saved);
+      }
+      await refreshData();
+      closeModal();
+      showToast('הבקשה נשלחה להורה השני לאישור', 'success');
+      render();
+    } catch (err) {
+      handleDbError(err);
+    } finally {
+      showLoading(false);
+    }
+  });
+  document.getElementById('modal-cancel')?.addEventListener('click', () => closeModal());
+}
+
+function handleRejectCustodyChange(requestId) {
+  openModal(
+    'דחיית בקשת שינוי משמורת',
+    `<form id="custody-reject-form">
+      <p style="margin:0 0 1rem;color:var(--text-muted)">נא להסביר למה הבקשה לא מאושרת — ההורה השני יראה את ההסבר.</p>
+      <div class="form-group">
+        <label class="form-label">סיבת הדחייה *</label>
+        <textarea class="form-textarea" name="rejectionReason" required placeholder="למשל: יש אירוע משפחתי באותו יום..."></textarea>
+      </div>
+    </form>`,
+    `<button class="btn btn-danger" id="modal-save">שלח דחייה</button>
+     <button class="btn btn-secondary" id="modal-cancel">ביטול</button>`
+  );
+
+  document.getElementById('modal-save')?.addEventListener('click', async () => {
+    const form = document.getElementById('custody-reject-form');
+    const reason = form?.querySelector('[name=rejectionReason]')?.value?.trim();
+    if (!reason) {
+      showToast('נא למלא סיבת דחייה');
+      return;
+    }
+    const request = (appData.custodyRequests || []).find(r => r.id === requestId);
+    if (!request) return;
+
+    try {
+      showLoading(true);
+      const myRole = getMySenderRole();
+      await respondToCustodyChangeRequest(requestId, {
+        status: 'rejected',
+        respondedBy: myRole,
+        rejectionReason: reason
+      });
+      await createAppUpdate({
+        updateType: 'custody_change',
+        title: '❌ בקשת משמורת נדחתה',
+        body: `${request.title} — ${reason}`,
+        linkPage: 'custody',
+        referenceId: requestId,
+        targetParentRole: request.requestedBy
+      });
+      await refreshData();
+      closeModal();
+      showToast('הבקשה נדחתה', 'success');
+      render();
+    } catch (err) {
+      handleDbError(err);
+    } finally {
+      showLoading(false);
+    }
+  });
+  document.getElementById('modal-cancel')?.addEventListener('click', () => closeModal());
+}
+
 function handleNoticeForm(notice = null, defaults = {}) {
   const isEdit = !!notice;
   const type = notice?.noticeType || defaults.noticeType || 'reminder';
@@ -571,6 +679,7 @@ function handleNoticeForm(notice = null, defaults = {}) {
   document.getElementById('modal-save')?.addEventListener('click', async () => {
     const data = getFormData(form);
     const requiresAck = !!form.querySelector('[name=requiresAck]')?.checked;
+    const remindDayBefore = !!form.querySelector('[name=remindDayBefore]')?.checked;
     const hasPenalty = !!form.querySelector('[name=hasPenalty]')?.checked;
     const payload = {
       noticeType: data.noticeType || type,
@@ -584,6 +693,7 @@ function handleNoticeForm(notice = null, defaults = {}) {
       withPerson: data.withPerson?.trim() || '',
       violatorRole: data.violatorRole || null,
       requiresAck,
+      remindDayBefore,
       hasPenalty,
       penaltyAmount: hasPenalty ? parseFloat(data.penaltyAmount) : null,
       createdBy: getMySenderRole()
@@ -1034,6 +1144,45 @@ function handleContentClick(e) {
           showLoading(false);
         }
       });
+      break;
+    case 'request-custody-change':
+      handleCustodyChangeForm();
+      break;
+    case 'approve-custody-change':
+      (async () => {
+        const request = (appData.custodyRequests || []).find(r => r.id === id);
+        if (!request || request.status !== 'pending') return;
+        try {
+          showLoading(true);
+          const myRole = getMySenderRole();
+          await respondToCustodyChangeRequest(id, {
+            status: 'approved',
+            respondedBy: myRole,
+            rejectionReason: null
+          });
+          if (typeof applyApprovedCustodyChange === 'function') {
+            await applyApprovedCustodyChange(appData, request);
+          }
+          await createAppUpdate({
+            updateType: 'custody_change',
+            title: '✅ בקשת משמורת אושרה',
+            body: `${request.title} — ${formatDate(request.date)}`,
+            linkPage: 'custody',
+            referenceId: id,
+            targetParentRole: request.requestedBy
+          });
+          await refreshData();
+          showToast('הבקשה אושרה והמשמורת עודכנה', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
+      break;
+    case 'reject-custody-change':
+      handleRejectCustodyChange(id);
       break;
     case 'new-consent':
       handleConsentForm();

@@ -2673,6 +2673,76 @@ body {
   .notice-list-actions .btn { flex: 1; }
 }
 
+.custody-change-card .card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.custody-request-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.custody-request-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.custody-request-row:last-child { border-bottom: none; }
+
+.custody-request-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin: 0.75rem 0 0.35rem;
+}
+
+.custody-request-title { font-weight: 700; margin-bottom: 0.25rem; }
+
+.custody-request-meta,
+.custody-request-reason {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.custody-request-reject {
+  font-size: 0.88rem;
+  color: var(--danger);
+  margin: 0.35rem 0;
+}
+
+.custody-request-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.custody-request-history {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.custody-request-history summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .custody-request-actions { width: 100%; }
+  .custody-request-actions .btn { flex: 1; }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {

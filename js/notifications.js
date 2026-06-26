@@ -229,6 +229,33 @@ async function checkNotifications(data, prevSnapshot) {
         await showAppNotification('🔔 תזכורת / דיווח', n.title, { tag: `notice-${n.id}` });
       }
     }
+
+    const tomorrow = typeof getTomorrowDateStr === 'function'
+      ? getTomorrowDateStr()
+      : (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })();
+    const dayBeforeSent = prevSnapshot?.dayBeforeReminderIds || {};
+    const tomorrowReminders = (data.parentNotices || []).filter(n =>
+      n.noticeType === 'reminder'
+      && n.date === tomorrow
+      && n.remindDayBefore !== false
+      && n.status !== 'cancelled'
+    );
+    for (const n of tomorrowReminders) {
+      if (!dayBeforeSent[n.id]) {
+        const body = n.withPerson ? `${n.title} — ${n.withPerson}` : n.title;
+        await showAppNotification('🔔 מחר!', `מחר: ${body}`, { tag: `reminder-tmr-${n.id}` });
+      }
+    }
+
+    const custodyPending = typeof getCustodyRequestsAwaitingMyResponse === 'function'
+      ? getCustodyRequestsAwaitingMyResponse(data, myRole)
+      : [];
+    const prevCustodyIds = new Set(prevSnapshot?.pendingCustodyIds || []);
+    for (const r of custodyPending) {
+      if (!prevCustodyIds.has(r.id)) {
+        await showAppNotification('📅 בקשת שינוי משמורת', `${r.title} — ${formatDate(r.date)}`, { tag: `custody-req-${r.id}` });
+      }
+    }
   }
 
   if (prefs.expenses && prevSnapshot?.expenseCount != null) {
@@ -243,6 +270,16 @@ async function checkNotifications(data, prevSnapshot) {
 }
 
 function buildNotificationSnapshot(data) {
+  const tomorrow = typeof getTomorrowDateStr === 'function'
+    ? getTomorrowDateStr()
+    : (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })();
+  const dayBeforeReminderIds = {};
+  (data.parentNotices || []).forEach(n => {
+    if (n.noticeType === 'reminder' && n.date === tomorrow && n.remindDayBefore !== false && n.status !== 'cancelled') {
+      dayBeforeReminderIds[n.id] = true;
+    }
+  });
+
   return {
     date: new Date().toISOString().split('T')[0],
     messageCount: data.messages?.length || 0,
@@ -256,6 +293,10 @@ function buildNotificationSnapshot(data) {
     pendingNoticeIds: (data.parentNotices || [])
       .filter(n => n.status === 'active' && n.requiresAck && !n.acknowledgedBy)
       .map(n => n.id),
+    dayBeforeReminderIds,
+    pendingCustodyIds: (data.custodyRequests || [])
+      .filter(r => r.status === 'pending')
+      .map(r => r.id),
     updateCount: data.updates?.length || 0
   };
 }

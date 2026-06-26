@@ -50,6 +50,7 @@ const DEFAULT_DATA = {
   messages: [],
   consentForms: [],
   parentNotices: [],
+  custodyRequests: [],
   updates: [],
   myProfile: { idNumber: '' }
 };

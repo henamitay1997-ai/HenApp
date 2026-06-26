@@ -191,6 +191,12 @@ function getNoticeFormHtml(data, notice = null, defaults = {}) {
           <span>שלח להורה השני לידיעה / אישור</span>
         </label>
       </div>
+      <div class="form-group notice-field-remind-day-before" style="display:${type === 'reminder' ? 'block' : 'none'}">
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+          <input type="checkbox" name="remindDayBefore" ${n.remindDayBefore !== false ? 'checked' : ''}>
+          <span>תזכיר לי יום לפני (למשל: «מחר להביא נעליים»)</span>
+        </label>
+      </div>
       <input type="hidden" name="presetId" value="${escapeHtml(n.presetId || defaults.presetId || '')}">
     </form>
   `;
@@ -201,6 +207,7 @@ function initNoticeFormFields(form) {
   const violatorField = form.querySelector('.notice-field-violator');
   const penaltyField = form.querySelector('.notice-field-penalty');
   const withPersonField = form.querySelector('.notice-field-with-person');
+  const remindDayBeforeField = form.querySelector('.notice-field-remind-day-before');
   const penaltyCheckbox = form.querySelector('[name=hasPenalty]');
   const penaltyAmountWrap = form.querySelector('.notice-penalty-amount');
 
@@ -210,6 +217,9 @@ function initNoticeFormFields(form) {
     if (penaltyField) penaltyField.style.display = type === 'violation' ? 'block' : 'none';
     if (withPersonField) {
       withPersonField.style.display = ['reminder', 'absence', 'cancellation'].includes(type) ? 'block' : 'none';
+    }
+    if (remindDayBeforeField) {
+      remindDayBeforeField.style.display = type === 'reminder' ? 'block' : 'none';
     }
   }
 

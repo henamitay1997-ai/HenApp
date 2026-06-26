@@ -378,31 +378,31 @@ function getConsentFormPdfHtml(data, consent) {
     : '____________';
 
   return `
-    <div id="consent-pdf-root" dir="rtl" style="font-family:'Heebo',Arial,sans-serif;color:#1a2332;padding:24px;background:#fff;line-height:1.6">
-      <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #e2e8f0;padding-bottom:12px">
-        <div style="font-size:12px;color:#64748b">הורים ביחד — הסכמה הורית משותפת</div>
-        <h1 style="margin:8px 0;font-size:20px">טופס הסכמה הורית משותפת לפעילות</h1>
-        <div style="font-size:12px;color:#64748b">מוגש ל: ${escapeHtml(consent.institutionName)}</div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:4px">מזהה: ${escapeHtml(consent.documentCode)} | הופק: ${escapeHtml(generatedAt)}</div>
+    <div id="consent-pdf-root" dir="rtl" style="font-family:'Heebo',Arial,sans-serif;color:#1a2332;padding:32px 40px;background:#fff;line-height:1.65;width:794px;min-height:1050px;box-sizing:border-box;font-size:14px">
+      <div style="text-align:center;margin-bottom:24px;border-bottom:2px solid #e2e8f0;padding-bottom:16px">
+        <div style="font-size:13px;color:#64748b">הורים ביחד — הסכמה הורית משותפת</div>
+        <h1 style="margin:10px 0;font-size:22px;font-weight:700">טופס הסכמה הורית משותפת לפעילות</h1>
+        <div style="font-size:13px;color:#64748b">מוגש ל: ${escapeHtml(consent.institutionName || '—')}</div>
+        <div style="font-size:12px;color:#94a3b8;margin-top:6px">מזהה: ${escapeHtml(consent.documentCode || '—')} | הופק: ${escapeHtml(generatedAt)}</div>
       </div>
 
-      <p><strong>מהות הפעילות:</strong> ${escapeHtml(consent.activityDescription)}</p>
+      <p style="font-size:14px;margin:12px 0"><strong>מהות הפעילות:</strong> ${escapeHtml(consent.activityDescription || '—')}</p>
 
-      <h3 style="font-size:14px;margin:16px 0 8px">פרטי הילד/ה</h3>
-      <p>שם מלא: <strong>${escapeHtml(consent.childFullName)}</strong> &nbsp; ת.ז.: <strong>${escapeHtml(consent.childIdNumber)}</strong></p>
+      <h3 style="font-size:16px;margin:20px 0 10px;font-weight:700">פרטי הילד/ה</h3>
+      <p style="font-size:14px">שם מלא: <strong>${escapeHtml(consent.childFullName || '—')}</strong> &nbsp; ת.ז.: <strong>${escapeHtml(consent.childIdNumber || '—')}</strong></p>
 
-      <h3 style="font-size:14px;margin:16px 0 8px">חלק א׳ — ${escapeHtml(consent.parentAName)}</h3>
-      <p style="font-size:13px">אני, ${escapeHtml(consent.parentAName)}, ת.ז. ${escapeHtml(consent.parentAIdNumber)}, מצהיר/ה כי אני אפוטרופוס חוקי של הילד/ה, ומאשר/ת את רישומו/ה לפעילות המדוברת.</p>
-      <p>חתימה: ${sigA} &nbsp; תאריך: ${consent.parentASignedAt ? escapeHtml(formatDateTime(consent.parentASignedAt)) : '____'}</p>
+      <h3 style="font-size:16px;margin:20px 0 10px;font-weight:700">חלק א׳ — ${escapeHtml(consent.parentAName || 'הורה א')}</h3>
+      <p style="font-size:14px">אני, ${escapeHtml(consent.parentAName || '—')}, ת.ז. ${escapeHtml(consent.parentAIdNumber || '—')}, מצהיר/ה כי אני אפוטרופוס חוקי של הילד/ה, ומאשר/ת את רישומו/ה לפעילות המדוברת.</p>
+      <p style="font-size:14px">חתימה: ${sigA} &nbsp; תאריך: ${consent.parentASignedAt ? escapeHtml(formatDateTime(consent.parentASignedAt)) : '____'}</p>
 
-      <h3 style="font-size:14px;margin:16px 0 8px">חלק ב׳ — ${escapeHtml(consent.parentBName)}</h3>
-      <p style="font-size:13px">אני, ${escapeHtml(consent.parentBName)}, ת.ז. ${escapeHtml(consent.parentBIdNumber)}, מצהיר/ה כי אני אפוטרופוס חוקי של הילד/ה, ומאשר/ת את רישומו/ה לפעילות המדוברת.</p>
-      <p>חתימה: ${sigB} &nbsp; תאריך: ${consent.parentBSignedAt ? escapeHtml(formatDateTime(consent.parentBSignedAt)) : '____'}</p>
+      <h3 style="font-size:16px;margin:20px 0 10px;font-weight:700">חלק ב׳ — ${escapeHtml(consent.parentBName || 'הורה ב')}</h3>
+      <p style="font-size:14px">אני, ${escapeHtml(consent.parentBName || '—')}, ת.ז. ${escapeHtml(consent.parentBIdNumber || '—')}, מצהיר/ה כי אני אפוטרופוס חוקי של הילד/ה, ומאשר/ת את רישומו/ה לפעילות המדוברת.</p>
+      <p style="font-size:14px">חתימה: ${sigB} &nbsp; תאריך: ${consent.parentBSignedAt ? escapeHtml(formatDateTime(consent.parentBSignedAt)) : '____'}</p>
 
-      <h3 style="font-size:14px;margin:16px 0 8px">חלק ג׳ — הצהרת הסכמה משותפת (שיפוי)</h3>
-      <p style="font-size:13px">שנינו, ההורים החתומים מטה, מצהירים כי הגענו להסכמה משותפת בנוגע לרישום הילד/ה. ידוע לנו כי מוסד זה מסתמך על חתימותינו אלו, ואנו מתחייבים לשפות את המוסד בגין כל טענה שתעלה כנגד הרישום, ככל ותעלה.</p>
+      <h3 style="font-size:16px;margin:20px 0 10px;font-weight:700">חלק ג׳ — הצהרת הסכמה משותפת (שיפוי)</h3>
+      <p style="font-size:14px">שנינו, ההורים החתומים מטה, מצהירים כי הגענו להסכמה משותפת בנוגע לרישום הילד/ה. ידוע לנו כי מוסד זה מסתמך על חתימותינו אלו, ואנו מתחייבים לשפות את המוסד בגין כל טענה שתעלה כנגד הרישום, ככל ותעלה.</p>
 
-      <div style="margin-top:24px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#64748b">
+      <div style="margin-top:28px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#64748b">
         מסמך דיגיטלי עם חותמת זמן ומזהה ייחודי. טופס זה נועד להסדיר את היחסים מול הספק הפרטי ואינו מחליף החלטות שיפוטיות.
       </div>
     </div>
@@ -410,25 +410,65 @@ function getConsentFormPdfHtml(data, consent) {
 }
 
 async function downloadConsentPdf(data, consent) {
-  await loadHtml2Pdf();
-  const html = getConsentFormPdfHtml(data, consent);
-  const wrap = document.createElement('div');
-  wrap.style.position = 'fixed';
-  wrap.style.left = '-9999px';
-  wrap.innerHTML = html;
-  document.body.appendChild(wrap);
-  const el = wrap.querySelector('#consent-pdf-root');
-  const filename = `הסכמה-הורית-${consent.childFullName || 'ילד'}-${consent.documentCode}.pdf`;
+  const host = document.createElement('div');
+  host.style.cssText = [
+    'position:fixed',
+    'top:0',
+    'left:0',
+    'width:794px',
+    'background:#fff',
+    'z-index:100001',
+    'overflow:visible',
+    'box-sizing:border-box'
+  ].join(';');
+
+  host.innerHTML = getConsentFormPdfHtml(data, consent);
+  document.body.appendChild(host);
+
+  const element = host.querySelector('#consent-pdf-root');
+  const filename = `הסכמה-הורית-${consent.childFullName || 'ילד'}-${consent.documentCode || 'form'}.pdf`;
+
   try {
+    showLoading(true);
+    await loadHtml2Pdf();
+
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    const canvasWidth = element.scrollWidth || 794;
+    const canvasHeight = element.scrollHeight || 1123;
+
     await html2pdf().set({
       margin: [10, 10, 10, 10],
       filename,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    }).from(el).save();
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        letterRendering: true,
+        scrollX: 0,
+        scrollY: 0,
+        x: 0,
+        y: 0,
+        width: canvasWidth,
+        height: canvasHeight,
+        windowWidth: canvasWidth,
+        windowHeight: canvasHeight,
+        backgroundColor: '#ffffff'
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(element).save();
+
+    showToast('הקובץ הורד בהצלחה', 'success');
+  } catch (err) {
+    console.error(err);
+    showToast('שגיאה ביצירת PDF — נסי הדפסה ובחרי «שמור כ-PDF»');
   } finally {
-    wrap.remove();
+    host.remove();
+    showLoading(false);
   }
 }
 
@@ -462,7 +502,8 @@ function renderUpdatesPage(data) {
               <div class="updates-feed-icon">${
                 u.updateType === 'consent_signature' ? '✍️'
                   : u.updateType === 'expense_approval' ? '💰'
-                    : u.updateType === 'reminder' ? '🔔'
+                    : u.updateType === 'custody_change' ? '📅'
+                      : u.updateType === 'reminder' ? '🔔'
                       : u.updateType === 'schedule_notice' ? '📋'
                         : '🔔'
               }</div>

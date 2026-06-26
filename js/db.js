@@ -78,8 +78,14 @@ function translateDbError(err) {
   if (isParentNoticesMissingError(err)) {
     return 'טבלת התזכורות לא נטענה — הרץ/י parent-notices.sql, המתין/י דקה, ורענני/י את האתר';
   }
+  if (isCustodyRequestsMissingError(err)) {
+    return 'טבלת בקשות משמורת לא נטענה — הרץ/י custody-change-requests.sql והמתין/י דקה';
+  }
   if (combined.includes('parent_notices')) {
     return msg || 'שגיאה בשמירת תזכורת';
+  }
+  if (combined.includes('custody_change_requests')) {
+    return msg || 'שגיאה בבקשת שינוי משמורת';
   }
   if (isFamilyDbError(err)) {
     return 'בעיה בטבלאות משפחה — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
@@ -355,6 +361,26 @@ function mapParentNotice(row) {
     penaltyAmount: row.penalty_amount != null ? Number(row.penalty_amount) : null,
     expenseId: row.expense_id || null,
     status: row.status || 'active',
+    remindDayBefore: row.remind_day_before !== false,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapCustodyChangeRequest(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    endDate: row.end_date || null,
+    childId: row.child_id || null,
+    title: row.title || '',
+    reason: row.reason || '',
+    requestedBy: row.requested_by || 'a',
+    assignTo: row.assign_to || 'a',
+    status: row.status || 'pending',
+    rejectionReason: row.rejection_reason || '',
+    respondedBy: row.responded_by || null,
+    respondedAt: row.responded_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -477,6 +503,21 @@ async function loadParentNotices(scopeField, scopeId) {
   return (data || []).map(mapParentNotice);
 }
 
+function isCustodyRequestsMissingError(err) {
+  if (!err) return false;
+  const combined = `${err?.message || ''} ${err?.details || ''}`.toLowerCase();
+  if (!combined.includes('custody_change_requests')) return false;
+  if (['PGRST205', '42P01'].includes(err.code)) return true;
+  return combined.includes('does not exist') || combined.includes('schema cache') || combined.includes('could not find');
+}
+
+async function loadCustodyChangeRequests(scopeField, scopeId) {
+  const { data, error } = await db().from('custody_change_requests').select('*').eq(scopeField, scopeId).order('date', { ascending: false });
+  if (error && isCustodyRequestsMissingError(error)) return [];
+  if (error) throw error;
+  return (data || []).map(mapCustodyChangeRequest);
+}
+
 async function loadLegacyAppData() {
   const settingsRes = await db().from('user_settings').select('*').eq('user_id', dbUserId).maybeSingle();
 
@@ -495,6 +536,7 @@ async function loadLegacyAppData() {
   const extra = await loadConsentAndUpdates('user_id', dbUserId);
   const myProfile = await loadMyProfile();
   const parentNotices = await loadParentNotices('user_id', dbUserId);
+  const custodyRequests = await loadCustodyChangeRequests('user_id', dbUserId);
 
   return {
     family: null,
@@ -505,6 +547,7 @@ async function loadLegacyAppData() {
     messages: (messagesRes.data || []).map(mapMessage),
     myProfile,
     parentNotices,
+    custodyRequests,
     ...extra
   };
 }
@@ -544,6 +587,7 @@ async function loadFamilyAppData() {
   const extra = await loadConsentAndUpdates('family_id', familyId);
   const myProfile = await loadMyProfile();
   const parentNotices = await loadParentNotices('family_id', familyId);
+  const custodyRequests = await loadCustodyChangeRequests('family_id', familyId);
 
   return {
     family: familyInfo,
@@ -554,6 +598,7 @@ async function loadFamilyAppData() {
     messages: (messagesRes.data || []).map(mapMessage),
     myProfile,
     parentNotices,
+    custodyRequests,
     ...extra
   };
 }
@@ -1044,6 +1089,7 @@ async function createParentNotice(data) {
     penalty_amount: data.hasPenalty && data.penaltyAmount ? data.penaltyAmount : null,
     expense_id: data.expenseId || null,
     status: 'active',
+    remind_day_before: data.remindDayBefore !== false,
     updated_at: new Date().toISOString()
   };
   const { data: row, error } = await db().from('parent_notices').insert(entityInsertPayload(rowPayload)).select().single();
@@ -1067,6 +1113,7 @@ async function updateParentNotice(id, data) {
     has_penalty: !!data.hasPenalty,
     penalty_amount: data.hasPenalty && data.penaltyAmount ? data.penaltyAmount : null,
     expense_id: data.expenseId || null,
+    remind_day_before: data.remindDayBefore !== false,
     updated_at: new Date().toISOString()
   };
   let query = db().from('parent_notices').update(payload).eq('id', id);
@@ -1104,4 +1151,37 @@ async function deleteParentNotice(id) {
   else query = query.eq('user_id', dbUserId);
   const { error } = await query;
   if (error) throw error;
+}
+
+async function createCustodyChangeRequest(data) {
+  const rowPayload = {
+    date: data.date,
+    end_date: data.endDate || null,
+    child_id: data.childId || null,
+    title: data.title || '',
+    reason: data.reason || '',
+    requested_by: data.requestedBy || 'a',
+    assign_to: data.assignTo || data.requestedBy || 'a',
+    status: 'pending',
+    updated_at: new Date().toISOString()
+  };
+  const { data: row, error } = await db().from('custody_change_requests').insert(entityInsertPayload(rowPayload)).select().single();
+  if (error) throw error;
+  return mapCustodyChangeRequest(row);
+}
+
+async function respondToCustodyChangeRequest(id, { status, respondedBy, rejectionReason }) {
+  const payload = {
+    status,
+    responded_by: respondedBy,
+    responded_at: new Date().toISOString(),
+    rejection_reason: status === 'rejected' ? (rejectionReason || '') : null,
+    updated_at: new Date().toISOString()
+  };
+  let query = db().from('custody_change_requests').update(payload).eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { data: row, error } = await query.select().single();
+  if (error) throw error;
+  return mapCustodyChangeRequest(row);
 }
