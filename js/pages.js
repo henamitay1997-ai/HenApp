@@ -439,14 +439,59 @@ function renderMessages(data) {
   `;
 }
 
+function renderFamilySettings(family) {
+  if (!family) return '';
+
+  const membersHtml = family.members.map(m => `
+    <div class="family-member">
+      <span class="badge badge-${m.parentRole}">${m.parentRole === 'a' ? 'הורה א' : 'הורה ב'}</span>
+      <span>${m.name}${m.isMe ? ' (את/ה)' : ''}</span>
+    </div>
+  `).join('');
+
+  const joinSection = !family.hasPartner ? `
+    <div class="form-group" style="margin-top:1rem">
+      <label class="form-label">הצטרף/י למשפחה קיימת</label>
+      <div class="invite-row">
+        <input class="form-input" id="join-code-input" placeholder="הזן/י קוד הזמנה" dir="ltr" style="text-transform:uppercase">
+        <button type="button" class="btn btn-primary" data-action="join-family">הצטרף</button>
+      </div>
+    </div>
+  ` : '';
+
+  return `
+    <div class="card">
+      <div class="card-title" style="margin-bottom:1rem">👨‍👩‍👧 המשפחה שלנו</div>
+
+      <div class="family-members-list">${membersHtml}</div>
+
+      ${!family.hasPartner ? `
+        <div class="invite-box">
+          <label class="form-label">קישור הזמנה להורה השני/ה</label>
+          <div class="invite-row">
+            <input class="form-input invite-link-input" id="invite-link" value="${family.inviteLink}" readonly dir="ltr">
+            <button type="button" class="btn btn-primary" data-action="copy-invite">העתק</button>
+          </div>
+          <p class="form-hint">קוד הזמנה: <strong dir="ltr">${family.inviteCode}</strong> — שלח/י לינק או קוד להורה השני/ה</p>
+        </div>
+        ${joinSection}
+      ` : `
+        <p class="form-hint" style="margin-top:0.75rem;color:var(--success)">✓ שני ההורים מחוברים — הנתונים משותפים</p>
+      `}
+    </div>
+  `;
+}
+
 function renderSettings(data) {
   const { settings } = data;
   const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
   const accountCard = user ? renderAccountSettings(user) : '';
+  const familyCard = data.family ? renderFamilySettings(data.family) : '';
 
   return `
     <div class="grid grid-2">
       ${accountCard}
+      ${familyCard}
       <div class="card">
         <div class="card-title" style="margin-bottom:1rem">פרטי הורים</div>
         <form id="settings-form">
@@ -462,11 +507,11 @@ function renderSettings(data) {
           </div>
           <div class="form-group">
             <label class="form-label">אני מחובר/ת כ:</label>
-            <select class="form-select" name="currentParent">
+            <select class="form-select" name="currentParent" ${data.family?.hasPartner ? 'disabled' : ''}>
               <option value="a" ${settings.currentParent === 'a' ? 'selected' : ''}>${settings.parentAName} (הורה א)</option>
               <option value="b" ${settings.currentParent === 'b' ? 'selected' : ''}>${settings.parentBName} (הורה ב)</option>
             </select>
-            <p class="form-hint">משפיע על שליחת הודעות ויצירת אירועים</p>
+            <p class="form-hint">${data.family?.hasPartner ? 'מוגדר אוטומטית לפי תפקידך במשפחה' : 'משפיע על שליחת הודעות ויצירת אירועים'}</p>
           </div>
           <button type="submit" class="btn btn-primary">שמור הגדרות</button>
         </form>
@@ -475,7 +520,7 @@ function renderSettings(data) {
       <div class="card">
         <div class="card-title" style="margin-bottom:1rem">ניהול נתונים</div>
         <p style="font-size:0.9rem;color:var(--text-muted);margin-bottom:1rem">
-          הנתונים נשמרים בענן (Supabase) ומקושרים לחשבון שלך.
+          הנתונים נשמרים בענן ומשותפים בין שני ההורים במשפחה.
         </p>
         <div style="display:flex;flex-direction:column;gap:0.5rem">
           <button class="btn btn-secondary" data-action="export-data">📥 ייצוא נתונים (JSON)</button>

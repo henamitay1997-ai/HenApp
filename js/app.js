@@ -14,6 +14,20 @@ let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 let listenersReady = false;
 let loadedUserId = null;
+let pendingJoinCode = null;
+
+function captureJoinCodeFromUrl() {
+  const match = window.location.hash.match(/^#join\/([A-Za-z0-9]+)/);
+  if (match) {
+    pendingJoinCode = match[1].toUpperCase();
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+}
+
+function getMySenderRole() {
+  if (appData.family?.hasPartner) return appData.family.myParentRole;
+  return appData.settings.currentParent;
+}
 
 function showLoading(show) {
   document.getElementById('loading-overlay').classList.toggle('hidden', !show);
@@ -158,7 +172,7 @@ function handleEventForm(event = null, defaultDate = null) {
     const payload = {
       ...data,
       childId: data.childId || null,
-      createdBy: isEdit ? event.createdBy : appData.settings.currentParent
+      createdBy: isEdit ? event.createdBy : getMySenderRole()
     };
 
     try {
@@ -390,6 +404,34 @@ function handleContentClick(e) {
         }
       });
       break;
+    case 'copy-invite': {
+      const input = document.getElementById('invite-link');
+      const link = input?.value || appData.family?.inviteLink;
+      if (!link) return;
+      navigator.clipboard.writeText(link)
+        .then(() => showToast('הלינק הועתק!', 'success'))
+        .catch(() => showToast(link));
+      break;
+    }
+    case 'join-family': {
+      const input = document.getElementById('join-code-input');
+      const code = input?.value.trim().toUpperCase();
+      if (!code) { showToast('הזן/י קוד הזמנה'); return; }
+      (async () => {
+        try {
+          showLoading(true);
+          await joinFamilyByCode(code);
+          await refreshData();
+          showToast('הצטרפת למשפחה בהצלחה!', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
+      break;
+    }
     case 'logout':
       signOut().then(() => showToast('התנתקת בהצלחה'));
       break;
@@ -477,7 +519,9 @@ function setupEventListeners() {
       const fd = getFormData(e.target);
       appData.settings.parentAName = fd.parentAName;
       appData.settings.parentBName = fd.parentBName;
-      appData.settings.currentParent = fd.currentParent;
+      appData.settings.currentParent = appData.family?.hasPartner
+        ? appData.family.myParentRole
+        : fd.currentParent;
       (async () => {
         try {
           showLoading(true);
@@ -501,7 +545,7 @@ function setupEventListeners() {
       if (!text) return;
       (async () => {
         try {
-          await createMessage(text, appData.settings.currentParent);
+          await createMessage(text, getMySenderRole());
           await refreshData();
           input.value = '';
           render();
@@ -531,6 +575,18 @@ async function onUserLoggedIn(user) {
 
   try {
     await ensureUserData(user.id);
+
+    if (pendingJoinCode) {
+      const code = pendingJoinCode;
+      pendingJoinCode = null;
+      try {
+        await joinFamilyByCode(code);
+        showToast('הצטרפת למשפחה בהצלחה!', 'success');
+      } catch (err) {
+        handleDbError(err, 'שגיאה בהצטרפות למשפחה');
+      }
+    }
+
     await refreshData();
   } catch (err) {
     handleDbError(err, 'שגיאה בטעינת נתונים');
@@ -546,12 +602,14 @@ async function onUserLoggedIn(user) {
 
 function onUserLoggedOut() {
   loadedUserId = null;
-  setDbUser(null);
+  clearFamilyContext();
   appData = structuredClone(DEFAULT_DATA);
   showAuthGate('login');
 }
 
 async function bootstrap() {
+  captureJoinCodeFromUrl();
+
   if (!initAuth()) {
     showAuthGate('not-configured');
     return;

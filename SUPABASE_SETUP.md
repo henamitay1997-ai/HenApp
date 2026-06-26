@@ -34,14 +34,12 @@ const SUPABASE_CONFIG = {
 - `http://localhost:8080`
 - `http://127.0.0.1:5500`
 
-## שלב 4: הרץ SQL (חובה!)
+## שלב 4: הרץ SQL
 
-1. **SQL Editor → New query**
-2. העתק/י את **כל** התוכן מ-`supabase/schema.sql`
-3. לחץ/י **Run**
+1. **SQL Editor → New query** — הרץ/י `supabase/schema.sql` (אם עדיין לא)
+2. **SQL Editor → New query** — הרץ/י `supabase/family-migration.sql` (שיתוף משפחה)
 
-זה יוצר את כל הטבלאות: הגדרות, ילדים, אירועים, הוצאות והודעות.
-כל הנתונים נשמרים בענן לפי משתמש.
+זה יוצר משפחות, קודי הזמנה ושיתוף נתונים בין הורים.
 
 ## שלב 5: פרוס מחדש
 
