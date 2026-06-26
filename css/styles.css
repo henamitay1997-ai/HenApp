@@ -869,6 +869,17 @@ body {
   cursor: pointer;
   transition: all 0.15s;
   color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.parent-pick .avatar,
+.parent-pick .avatar-img,
+.parent-pick .avatar-fallback {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
 }
 
 .parent-pick.parent-a:not(.active) {
@@ -1342,16 +1353,64 @@ body {
   gap: 1rem;
 }
 
+.avatar,
+.avatar-img,
+.avatar-fallback,
 .child-avatar {
   width: 56px;
   height: 56px;
   border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  object-fit: cover;
+  border: 2px solid var(--border);
+  background: var(--surface-2);
+}
+
+.avatar-fallback,
+.child-avatar {
   background: var(--primary-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
-  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--primary);
+  border: 2px solid var(--border);
+}
+
+.avatar-fallback.avatar-parent-a,
+.avatar-img.avatar-parent-a {
+  border-color: #60a5fa;
+}
+
+.avatar-fallback.avatar-parent-b,
+.avatar-img.avatar-parent-b {
+  border-color: #fb923c;
+}
+
+.avatar-picker {
+  margin-top: 0.75rem;
+}
+
+.avatar-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.avatar-picker-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.avatar-upload-btn {
+  cursor: pointer;
+  margin: 0;
 }
 
 /* Modal */

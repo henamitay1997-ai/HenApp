@@ -38,6 +38,7 @@ function translateDbError(err) {
   if (msg.includes('family_settings')) return 'חסרות טבלאות משפחה — הרץ/י את family-migration.sql ב-Supabase';
   if (msg.includes('ensure_user_family')) return 'חסרה פונקציית משפחה — הרץ/י את family-migration.sql ב-Supabase';
   if (msg.includes('row-level security') || msg.includes('RLS')) return 'שגיאת הרשאות — הרץ/י את fix-data.sql ב-Supabase';
+  if (msg.includes('parent_a_avatar') || msg.includes('avatar_url')) return 'חסרות עמודות תמונה — הרץ/י את avatars-migration.sql ב-Supabase';
   if (msg.includes('JWT')) return 'פג תוקף ההתחברות — התחבר/י מחדש';
   return msg || 'שגיאה בשמירה';
 }
@@ -90,6 +91,8 @@ function mapSettings(row, currentParent) {
   return {
     parentAName: row.parent_a_name,
     parentBName: row.parent_b_name,
+    parentAAvatar: row.parent_a_avatar || '',
+    parentBAvatar: row.parent_b_avatar || '',
     currentParent: currentParent || row.current_parent || 'a',
     custodyPattern: row.custody_pattern,
     custodyStartDate: row.custody_start_date,
@@ -106,7 +109,8 @@ function mapChild(row) {
     birthDate: row.birth_date || '',
     school: row.school || '',
     allergies: row.allergies || '',
-    notes: row.notes || ''
+    notes: row.notes || '',
+    avatarUrl: row.avatar_url || ''
   };
 }
 
@@ -291,6 +295,8 @@ async function saveSettings(settings) {
       user_id: dbUserId,
       parent_a_name: settings.parentAName,
       parent_b_name: settings.parentBName,
+      parent_a_avatar: settings.parentAAvatar || null,
+      parent_b_avatar: settings.parentBAvatar || null,
       current_parent: settings.currentParent,
       custody_pattern: settings.custodyPattern,
       custody_start_date: settings.custodyStartDate,
@@ -304,6 +310,8 @@ async function saveSettings(settings) {
   const { error: settingsErr } = await db().from('family_settings').update({
     parent_a_name: settings.parentAName,
     parent_b_name: settings.parentBName,
+    parent_a_avatar: settings.parentAAvatar || null,
+    parent_b_avatar: settings.parentBAvatar || null,
     custody_pattern: settings.custodyPattern,
     custody_start_date: settings.custodyStartDate,
     week_schedule: buildWeekSchedulePayload(settings.weekSchedule, settings.manualDates, settings.weekSchedule2),
@@ -335,7 +343,8 @@ function childInsertPayload(data) {
     birth_date: data.birthDate || null,
     school: data.school || '',
     allergies: data.allergies || '',
-    notes: data.notes || ''
+    notes: data.notes || '',
+    avatar_url: data.avatarUrl || null
   };
   if (familyId) payload.family_id = familyId;
   return payload;
@@ -353,7 +362,8 @@ async function updateChild(id, data) {
     birth_date: data.birthDate || null,
     school: data.school || '',
     allergies: data.allergies || '',
-    notes: data.notes || ''
+    notes: data.notes || '',
+    avatar_url: data.avatarUrl || null
   }).eq('id', id).eq('user_id', dbUserId);
   if (familyId) query = query.eq('family_id', familyId);
   const { error } = await query;

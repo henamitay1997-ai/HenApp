@@ -7,6 +7,8 @@ const DEFAULT_DATA = {
   settings: {
     parentAName: 'הורה א',
     parentBName: 'הורה ב',
+    parentAAvatar: '',
+    parentBAvatar: '',
     currentParent: 'a',
     custodyStartDate: new Date().toISOString().split('T')[0],
     custodyPattern: 'alternating-weeks',

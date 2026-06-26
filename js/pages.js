@@ -89,7 +89,7 @@ function renderDashboard(data) {
           ${data.children.map(c => `
             <div class="card" style="box-shadow:none;background:var(--surface-2)">
               <div class="child-card">
-                <div class="child-avatar">${c.name.charAt(0)}</div>
+                ${renderAvatar(c.name, c.avatarUrl, { size: 48, variant: 'avatar-child' })}
                 <div>
                   <div style="font-weight:700">${c.name}</div>
                   <div style="font-size:0.85rem;color:var(--text-muted)">גיל ${getAge(c.birthDate)}${c.school ? ' · ' + c.school : ''}</div>
@@ -255,16 +255,19 @@ function renderParentPicker(data, type, id, currentParent) {
     manual: 'data-manual-date'
   };
   const attr = attrMap[type] || 'data-week-day';
+  const parentName = getParentName(data, currentParent === 'a' ? 'a' : 'b');
 
   return `
     <div class="parent-picker" role="group" aria-label="בחירת הורה">
       <button type="button" class="parent-pick parent-a ${currentParent === 'a' ? 'active' : ''}"
               ${attr}="${id}" data-parent="a" aria-pressed="${currentParent === 'a'}">
-        ${getParentName(data, 'a')}
+        ${renderAvatar(getParentName(data, 'a'), getParentAvatar(data, 'a'), { size: 28, variant: 'avatar-parent-a' })}
+        <span>${getParentName(data, 'a')}</span>
       </button>
       <button type="button" class="parent-pick parent-b ${currentParent === 'b' ? 'active' : ''}"
               ${attr}="${id}" data-parent="b" aria-pressed="${currentParent === 'b'}">
-        ${getParentName(data, 'b')}
+        ${renderAvatar(getParentName(data, 'b'), getParentAvatar(data, 'b'), { size: 28, variant: 'avatar-parent-b' })}
+        <span>${getParentName(data, 'b')}</span>
       </button>
     </div>
   `;
@@ -515,7 +518,7 @@ function renderChildren(data) {
       ${data.children.map(c => `
         <div class="card">
           <div class="child-card" style="margin-bottom:1rem">
-            <div class="child-avatar">${c.name.charAt(0)}</div>
+            ${renderAvatar(c.name, c.avatarUrl, { size: 56, variant: 'avatar-child' })}
             <div style="flex:1">
               <div style="font-size:1.15rem;font-weight:700">${c.name}</div>
               <div style="color:var(--text-muted);font-size:0.9rem">גיל ${getAge(c.birthDate)} · ${formatDate(c.birthDate).split(',')[0]}</div>
@@ -831,10 +834,12 @@ function renderSettings(data) {
             <div class="form-group">
               <label class="form-label">שם הורה א</label>
               <input class="form-input" name="parentAName" value="${settings.parentAName}">
+              ${renderAvatarPicker('parentAAvatar', settings.parentAName, settings.parentAAvatar, 'תמונת הורה א', 'avatar-parent-a')}
             </div>
             <div class="form-group">
               <label class="form-label">שם הורה ב</label>
               <input class="form-input" name="parentBName" value="${settings.parentBName}">
+              ${renderAvatarPicker('parentBAvatar', settings.parentBName, settings.parentBAvatar, 'תמונת הורה ב', 'avatar-parent-b')}
             </div>
           </div>
           <div class="form-group">
@@ -868,6 +873,7 @@ function renderSettings(data) {
 function getChildFormHtml(data, child = null) {
   return `
     <form id="child-form">
+      ${renderAvatarPicker('avatarUrl', child?.name || 'ילד/ה', child?.avatarUrl || '', 'תמונת הילד/ה', 'avatar-child')}
       <div class="form-group">
         <label class="form-label">שם מלא</label>
         <input class="form-input" name="name" value="${child?.name || ''}" required>

@@ -99,6 +99,7 @@ function render() {
       break;
     case 'settings':
       content.innerHTML = renderSettings(appData);
+      initAvatarPickers(document.getElementById('content'));
       break;
   }
 
@@ -151,6 +152,8 @@ function handleChildForm(child = null) {
 
   const form = document.getElementById('child-form');
   if (!form) return;
+
+  initAvatarPickers(form);
 
   document.getElementById('modal-save')?.addEventListener('click', async () => {
     const data = getFormData(form);
@@ -627,6 +630,8 @@ function setupEventListeners() {
       const fd = getFormData(e.target);
       appData.settings.parentAName = fd.parentAName;
       appData.settings.parentBName = fd.parentBName;
+      appData.settings.parentAAvatar = fd.parentAAvatar || '';
+      appData.settings.parentBAvatar = fd.parentBAvatar || '';
       appData.settings.currentParent = appData.family?.hasPartner
         ? appData.family.myParentRole
         : fd.currentParent;
