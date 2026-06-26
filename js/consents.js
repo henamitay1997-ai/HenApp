@@ -592,115 +592,37 @@ function getConsentPdfFilename(consent) {
 
 async function downloadConsentPdf(data, consent) {
   const enriched = enrichConsentForExport(data, consent);
-  const host = document.createElement('div');
-  host.setAttribute('aria-hidden', 'true');
-  host.style.cssText = [
-    'position:fixed',
-    'top:0',
-    'left:0',
-    'width:210mm',
-    'background:#fff',
-    'z-index:100001',
-    'overflow:visible',
-    'box-sizing:border-box',
-    'pointer-events:none'
-  ].join(';');
-
-  host.innerHTML = getConsentFormPdfHtml(data, enriched);
-  document.body.appendChild(host);
-
-  const element = host.querySelector('#consent-pdf-root');
   const filename = getConsentPdfFilename(enriched);
+  const html = getConsentFormPdfHtml(data, enriched);
 
-  try {
-    showLoading(true);
-    await loadHtml2Pdf();
-
-    if (document.fonts?.ready) {
-      await document.fonts.ready;
-    }
-    await waitForConsentPdfImages(host);
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    element.style.width = '210mm';
-    element.style.maxWidth = '210mm';
-    const rect = element.getBoundingClientRect();
-    const captureWidth = Math.max(Math.round(rect.width), 794);
-    const captureHeight = Math.max(Math.round(element.scrollHeight), Math.round(rect.height), 1123);
-
-    const canvas = await html2pdf()
-      .set({
-        margin: 0,
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          scrollX: 0,
-          scrollY: 0,
-          width: captureWidth,
-          height: captureHeight,
-          windowWidth: captureWidth,
-          windowHeight: captureHeight
-        }
-      })
-      .from(element)
-      .toCanvas()
-      .get('canvas');
-
-    const jsPDF = window.jspdf?.jsPDF;
-    if (!jsPDF) throw new Error('PDF library missing');
-
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 8;
-    const contentW = pageW - margin * 2;
-    const imgW = contentW;
-    const imgH = (canvas.height * imgW) / canvas.width;
-    const imgData = canvas.toDataURL('image/jpeg', 0.96);
-
-    let position = margin;
-    let heightLeft = imgH;
-
-    pdf.addImage(imgData, 'JPEG', margin, position, imgW, imgH);
-    heightLeft -= (pageH - margin * 2);
-
-    while (heightLeft > 0) {
-      pdf.addPage();
-      position = margin - (imgH - heightLeft);
-      pdf.addImage(imgData, 'JPEG', margin, position, imgW, imgH);
-      heightLeft -= (pageH - margin * 2);
-    }
-
-    pdf.save(filename);
-    showToast('הקובץ הורד בהצלחה', 'success');
-  } catch (err) {
-    console.error(err);
-    showToast('מנסה דרך חלון הדפסה...', 'info');
-    printConsentForm(data, consent);
-  } finally {
-    host.remove();
-    showLoading(false);
-  }
+  await exportPdfFromHtml({
+    html,
+    rootSelector: '#consent-pdf-root',
+    filename,
+    orientation: 'portrait',
+    hostWidth: '210mm',
+    beforeCapture: async (element, host) => {
+      element.style.width = '210mm';
+      element.style.maxWidth = '210mm';
+      if (host && typeof waitForConsentPdfImages === 'function') {
+        await waitForConsentPdfImages(host);
+      }
+    },
+    printFallbackHtml: getConsentPrintDocumentHtml(data, enriched),
+    printTitle: 'טופס הסכמה הורית',
+    printDownloadName: 'consent-form',
+    printOrientation: 'portrait'
+  });
 }
 
 function printConsentForm(data, consent) {
-  const win = window.open('', '_blank', 'noopener,noreferrer');
-  if (!win) {
-    showToast('לא ניתן לפתוח חלון הדפסה — בדקי חסימת חלונות קופצים');
-    return;
-  }
-  win.document.open();
-  win.document.write(getConsentPrintDocumentHtml(data, consent));
-  win.document.close();
-  win.onload = () => {
-    setTimeout(() => {
-      win.focus();
-      win.print();
-    }, 600);
-  };
+  const enriched = enrichConsentForExport(data, consent);
+  openPrintPreview(
+    getConsentPrintDocumentHtml(data, enriched),
+    'טופס הסכמה הורית',
+    'consent-form',
+    'portrait'
+  );
 }
 
 function getConsentDeepLink(consentId) {

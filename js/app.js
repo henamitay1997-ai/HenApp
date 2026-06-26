@@ -278,75 +278,29 @@ function getCalendarPrintHtml() {
 </html>`;
 }
 
-async function ensureHtml2Pdf() {
-  if (typeof html2pdf !== 'undefined') return true;
-  await new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-    script.onload = resolve;
-    script.onerror = () => reject(new Error('pdf lib'));
-    document.head.appendChild(script);
-  });
-  return typeof html2pdf !== 'undefined';
-}
-
 async function downloadCalendarPdf() {
-  try {
-    showLoading(true);
-    const ready = await ensureHtml2Pdf();
-    if (!ready) throw new Error('pdf lib missing');
-  } catch (_) {
-    showLoading(false);
-    showToast('לא ניתן לטעון את כלי ה-PDF — נסי הדפסה ובחרי "שמור כ-PDF"');
-    return;
-  }
-
   const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
-  const sheet = document.createElement('div');
-  sheet.innerHTML = renderCalendarPrintSheet(appData, calYear, calMonth);
-  sheet.style.position = 'fixed';
-  sheet.style.left = '-9999px';
-  sheet.style.top = '0';
-  sheet.style.width = '1100px';
-  sheet.style.background = '#fff';
-  document.body.appendChild(sheet);
+  const sheetHtml = renderCalendarPrintSheet(appData, calYear, calMonth);
+  const filename = `custody-calendar-${monthNames[calMonth]}-${calYear}.pdf`;
+  const fullHtml = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/styles.css?v=17"><style>body{margin:0;padding:16px;background:#fff;font-family:Heebo,Arial,sans-serif}@page{size:A4 landscape;margin:12mm}</style></head><body>${sheetHtml}</body></html>`;
 
-  const printEl = sheet.firstElementChild;
-  printEl.querySelectorAll('.cal-day').forEach(cell => {
-    if (!cell.style.background && !cell.getAttribute('style')) {
-      cell.style.background = '#fff';
-      cell.style.border = '1px solid #ccc';
-    }
+  await exportPdfFromHtml({
+    html: `<div id="calendar-report-pdf" style="width:1100px;background:#fff">${sheetHtml}</div>`,
+    rootSelector: '#calendar-report-pdf',
+    filename,
+    orientation: 'landscape',
+    hostWidth: '1100px',
+    printFallbackHtml: fullHtml,
+    printTitle: 'לוח משמורת',
+    printDownloadName: 'custody-calendar'
   });
-
-  try {
-    showLoading(true);
-    await html2pdf().set({
-      margin: [8, 8, 8, 8],
-      filename: `לוח-משמורת-${monthNames[calMonth]}-${calYear}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    }).from(printEl).save();
-    showToast('הקובץ נשמר', 'success');
-  } catch (err) {
-    console.error(err);
-    showToast('שגיאה ביצירת PDF — נסי הדפסה ובחרי "שמור כ-PDF"');
-  } finally {
-    document.body.removeChild(sheet);
-    showLoading(false);
-  }
 }
 
 function printCalendarMonth() {
-  const win = window.open('', '_blank', 'noopener,noreferrer');
-  if (!win) {
-    showToast('לא ניתן לפתוח חלון הדפסה — בדקי חסימת חלונות קופצים');
-    return;
-  }
-  win.document.open();
-  win.document.write(getCalendarPrintHtml());
-  win.document.close();
+  const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  const sheetHtml = renderCalendarPrintSheet(appData, calYear, calMonth);
+  const fullHtml = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><title>לוח משמורת ${monthNames[calMonth]} ${calYear}</title><link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/styles.css?v=17"><style>body{margin:0;padding:16px;background:#fff;font-family:Heebo,Arial,sans-serif}@page{size:A4 landscape;margin:12mm}</style></head><body>${sheetHtml}</body></html>`;
+  openPrintPreview(fullHtml, `לוח משמורת — ${monthNames[calMonth]} ${calYear}`, 'custody-calendar');
 }
 
 function scrollMessagesToBottom() {
@@ -1245,10 +1199,7 @@ function handleContentClick(e) {
       downloadExpenseReportPdf(appData);
       break;
     case 'download-violations-pdf':
-      downloadViolationsReportPdf(appData).catch(err => {
-        console.error(err);
-        showToast('שגיאה ביצירת הדוח');
-      });
+      downloadViolationsReportPdf(appData);
       break;
     case 'print-violations-report':
       printViolationsReport(appData);
