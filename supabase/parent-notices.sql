@@ -1,4 +1,4 @@
--- תזכורות, דיווחי היעדרות והפרות משמורת — הרץ/י ב-Supabase SQL Editor
+-- תזכורות ודיווחים — הרץ/י הכל ב-Supabase SQL Editor → Run
 
 create table if not exists public.parent_notices (
   id uuid primary key default gen_random_uuid(),
@@ -39,14 +39,28 @@ alter table public.parent_notices enable row level security;
 drop policy if exists "Family members manage parent notices" on public.parent_notices;
 create policy "Family members manage parent notices" on public.parent_notices
   for all using (
-    (family_id is not null and family_id in (select public.user_family_ids()))
-    or user_id = auth.uid()
+    user_id = auth.uid()
+    or (
+      family_id is not null
+      and exists (
+        select 1 from public.family_members fm
+        where fm.family_id = parent_notices.family_id
+          and fm.user_id = auth.uid()
+      )
+    )
   )
   with check (
-    (family_id is not null and family_id in (select public.user_family_ids()))
-    or user_id = auth.uid()
+    user_id = auth.uid()
+    or (
+      family_id is not null
+      and exists (
+        select 1 from public.family_members fm
+        where fm.family_id = parent_notices.family_id
+          and fm.user_id = auth.uid()
+      )
+    )
   );
 
 notify pgrst, 'reload schema';
 
-select '✅ טבלת תזכורות ודיווחים מוכנה' as result;
+select '✅ טבלת תזכורות מוכנה — רענני/י את האתר' as result;
