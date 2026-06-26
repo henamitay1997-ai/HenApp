@@ -255,7 +255,6 @@ function renderParentPicker(data, type, id, currentParent) {
     manual: 'data-manual-date'
   };
   const attr = attrMap[type] || 'data-week-day';
-  const parentName = getParentName(data, currentParent === 'a' ? 'a' : 'b');
 
   return `
     <div class="parent-picker" role="group" aria-label="בחירת הורה">
