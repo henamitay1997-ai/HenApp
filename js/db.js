@@ -61,6 +61,9 @@ function translateDbError(err) {
     if (combined.includes('consent_forms') || combined.includes('app_updates')) {
       return 'שגיאת הרשאות לטפסי אישור — הרץ/י ב-Supabase את fix-consent-tables.sql';
     }
+    if (combined.includes('parent_notices')) {
+      return 'שגיאת הרשאות לתזכורות — הרץ/י ב-Supabase את fix-parent-notices.sql';
+    }
     return 'שגיאת הרשאות — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
   }
   if (isConsentTablesMissingError(err)) {
@@ -73,7 +76,10 @@ function translateDbError(err) {
     return 'חסרה עמודת ת.ז. בפרופיל — הרץ/י ב-Supabase את consent-forms.sql';
   }
   if (isParentNoticesMissingError(err)) {
-    return 'חסרה טבלת תזכורות — הרץ/י ב-Supabase את parent-notices.sql';
+    return 'טבלת התזכורות לא נטענה — הרץ/י parent-notices.sql, המתין/י דקה, ורענני/י את האתר';
+  }
+  if (combined.includes('parent_notices')) {
+    return msg || 'שגיאה בשמירת תזכורת';
   }
   if (isFamilyDbError(err)) {
     return 'בעיה בטבלאות משפחה — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
