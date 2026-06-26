@@ -67,6 +67,28 @@ function syncNavActive(page) {
   });
 }
 
+function updateNavBadges() {
+  const myRole = getMySenderRole();
+  const approvalCount = typeof getExpensesAwaitingMyApproval === 'function'
+    ? getExpensesAwaitingMyApproval(appData, myRole).length
+    : 0;
+
+  document.querySelectorAll('.nav-link[data-page="expenses"]').forEach(link => {
+    let badge = link.querySelector('.nav-badge');
+    if (approvalCount > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'nav-badge';
+        link.appendChild(badge);
+      }
+      badge.textContent = approvalCount;
+      badge.title = `${approvalCount} הוצאות ממתינות לאישורך`;
+    } else {
+      badge?.remove();
+    }
+  });
+}
+
 function render() {
   const hash = window.location.hash.slice(1) || 'dashboard';
   const page = PAGE_TITLES[hash] ? hash : 'dashboard';
@@ -119,6 +141,7 @@ function render() {
   }
 
   document.getElementById('topbar-actions').innerHTML = actionsHtml;
+  updateNavBadges();
   closeSidebar();
 }
 
@@ -438,7 +461,12 @@ function handleExpenseForm(expense = null) {
       else await createExpense(payload);
       await refreshData();
       closeModal();
-      showToast(isEdit ? 'ההוצאה עודכנה' : 'הוצאה נוספה', 'success');
+      if (!isEdit && requiresApproval) {
+        const other = getMySenderRole() === 'a' ? 'b' : 'a';
+        showToast(`הבקשה נשלחה ל${getParentName(appData, other)} — יופיע אצלו/ה בדף «הוצאות»`, 'success');
+      } else {
+        showToast(isEdit ? 'ההוצאה עודכנה' : 'הוצאה נוספה', 'success');
+      }
       render();
     } catch (err) {
       handleDbError(err);

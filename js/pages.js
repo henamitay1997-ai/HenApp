@@ -6,8 +6,29 @@ function renderDashboard(data) {
   const pending = getPendingExpenses(data);
   const pendingTotal = pending.reduce((s, e) => s + e.amount * (e.splitPercent / 100), 0);
   const unreadMessages = data.messages.length;
+  const myRole = typeof getMySenderRole === 'function' ? getMySenderRole() : 'a';
+  const awaitingApproval = getExpensesAwaitingMyApproval(data, myRole);
+  const myPendingRequests = getExpensesAwaitingMyResponse(data, myRole);
 
   return `
+    ${awaitingApproval.length ? `
+      <div class="card expense-approval-card dashboard-approval-alert" style="margin-bottom:1.25rem">
+        <div class="card-header" style="align-items:center">
+          <div>
+            <div class="card-title">✋ ${awaitingApproval.length} הוצאות מחכות לאישורך</div>
+            <div class="card-subtitle">ההורה השני ביקש/ה את אישורך — לחצי/לחץ לאישור או דחייה</div>
+          </div>
+          <a href="#expenses" class="btn btn-primary">עבור לאישור</a>
+        </div>
+      </div>
+    ` : ''}
+    ${myPendingRequests.length ? `
+      <div class="card expense-request-sent-card" style="margin-bottom:1.25rem">
+        <div class="card-title">📤 ${myPendingRequests.length} בקשות אישור נשלחו</div>
+        <div class="card-subtitle">ממתין לתשובה מ${getParentName(data, myRole === 'a' ? 'b' : 'a')} — יופיע אצלו/ה בדף «הוצאות»</div>
+      </div>
+    ` : ''}
+
     <div class="grid grid-4" style="margin-bottom:1.25rem">
       <div class="stat-card">
         <div class="stat-icon">👶</div>
@@ -1097,9 +1118,9 @@ function renderEvents(data) {
 }
 
 function renderExpenses(data) {
-  const summary = calculateExpenseSummary(data);
-  const { parentA, parentB, settlement, rows } = summary;
   const myRole = typeof getMySenderRole === 'function' ? getMySenderRole() : 'a';
+  const summary = calculateExpenseSummary(data, myRole);
+  const { parentA, parentB, settlement, rows } = summary;
   const awaitingApproval = getExpensesAwaitingMyApproval(data, myRole);
   const pending = rows.filter(e => !e.paid && isExpenseActive(e));
   const totalPending = pending.reduce((s, e) => s + e.amount, 0);
@@ -1141,7 +1162,10 @@ function renderExpenses(data) {
       ${awaitingApproval.length ? `
         <div class="card expense-approval-card">
           <div class="card-header">
-            <div class="card-title">✋ ממתין לאישורך (${awaitingApproval.length})</div>
+            <div>
+              <div class="card-title">✋ ממתין לאישורך (${awaitingApproval.length})</div>
+              <div class="card-subtitle">כאן מאשרים או דוחים הוצאות שההורה השני ביקש/ה</div>
+            </div>
           </div>
           <ul class="expense-approval-list">
             ${awaitingApproval.map(e => `
@@ -1224,6 +1248,11 @@ function renderExpenses(data) {
                   <td data-label="חלוקה">${e.splitPercent}% / ${100 - e.splitPercent}%</td>
                   <td data-label="סטטוס"><span class="badge ${statusBadgeClass(e)}">${e.statusLabel}</span></td>
                   <td data-label="פעולות" class="expense-table-actions">
+                    ${e.requiresApproval && e.approvalStatus === 'pending' && e.createdBy !== myRole ? `
+                      <button class="btn btn-sm btn-primary" data-action="approve-expense-split" data-id="${e.id}">מאשר/ת לחלוק</button>
+                      <button class="btn btn-sm btn-secondary" data-action="approve-expense-full" data-id="${e.id}">משלם/ת לבד</button>
+                      <button class="btn btn-sm btn-danger" data-action="reject-expense" data-id="${e.id}">דחייה</button>
+                    ` : ''}
                     ${!e.paid && isExpenseActive(e) ? `<button class="btn btn-sm btn-primary" data-action="mark-paid" data-id="${e.id}">שולם</button>` : ''}
                     <button class="btn btn-sm btn-secondary" data-action="edit-expense" data-id="${e.id}">ערוך</button>
                     <button class="btn btn-sm btn-danger" data-action="delete-expense" data-id="${e.id}">מחק</button>

@@ -430,14 +430,29 @@ function getExpensesAwaitingMyApproval(data, myRole) {
   );
 }
 
-function getExpenseStatusLabel(e) {
+function getExpenseStatusLabel(e, data, myRole) {
   if (e.approvalStatus === 'rejected') return 'נדחה';
-  if (e.requiresApproval && e.approvalStatus === 'pending') return 'ממתין לאישור';
+  if (e.requiresApproval && e.approvalStatus === 'pending') {
+    if (data && myRole) {
+      if (e.createdBy === myRole) {
+        const other = e.createdBy === 'a' ? 'b' : 'a';
+        return `נשלח לאישור ${getParentName(data, other)}`;
+      }
+      if (e.createdBy !== myRole) return 'ממתין לאישורך ✋';
+    }
+    return 'ממתין לאישור';
+  }
   if (e.paid) return 'שולם';
   return 'ממתין לתשלום';
 }
 
-function calculateExpenseSummary(data) {
+function getExpensesAwaitingMyResponse(data, myRole) {
+  return (data.expenses || []).filter(e =>
+    e.requiresApproval && e.approvalStatus === 'pending' && e.createdBy === myRole
+  );
+}
+
+function calculateExpenseSummary(data, myRole) {
   const parentAName = getParentName(data, 'a');
   const parentBName = getParentName(data, 'b');
 
@@ -466,7 +481,7 @@ function calculateExpenseSummary(data) {
         shareA,
         shareB,
         paidByName: getParentName(data, e.paidBy),
-        statusLabel: getExpenseStatusLabel(e)
+        statusLabel: getExpenseStatusLabel(e, data, myRole)
       };
     });
 
