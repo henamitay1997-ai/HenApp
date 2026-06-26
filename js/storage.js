@@ -287,6 +287,40 @@ function getCustodyDayInfo(data, dateStr) {
   return { parent, ...detail };
 }
 
+function getCalendarDayDisplay(data, dateStr) {
+  const dayInfo = getCustodyDayInfo(data, dateStr);
+  const visitParent = dayInfo.parent;
+
+  if (dayInfo.overnight !== false) {
+    return { mode: 'overnight', parent: visitParent, dayInfo };
+  }
+
+  let baseParent = visitParent === 'a' ? 'b' : 'a';
+  const { custodyPattern, visitHours, weekendCycle } = data.settings;
+
+  if (custodyPattern === 'visit-hours') {
+    const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+    const dayConfig = getVisitHoursDayConfig(visitHours, dayOfWeek);
+    if (dayConfig?.active) {
+      baseParent = visitHours?.baseParent || baseParent;
+    }
+  } else if (custodyPattern === 'weekend-cycle') {
+    const hasVisitOverlay = getFlexVisitForDate(dateStr, weekendCycle?.flexVisits)
+      || getFollowUpVisitForDate(dateStr, weekendCycle);
+    if (hasVisitOverlay && weekendCycle?.offParent) {
+      baseParent = weekendCycle.offParent;
+    }
+  }
+
+  return {
+    mode: 'visit',
+    parent: visitParent,
+    baseParent,
+    visitParent,
+    dayInfo
+  };
+}
+
 function formatCustodyTimeLabel(info) {
   if (info.overnight) return 'משמורת עם לינה';
   const pickup = info.pickup || '?';

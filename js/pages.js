@@ -149,6 +149,10 @@ function renderCalendar(data, year, month) {
         <div class="calendar-legend">
           <span class="badge badge-a">${getParentName(data, 'a')}</span>
           <span class="badge badge-b">${getParentName(data, 'b')}</span>
+          <span class="calendar-legend-split" title="ימים עם ביקור ללא לינה">
+            <span class="cal-legend-split-demo cal-base-a cal-visit-parent-b"></span>
+            ביקור ללא לינה
+          </span>
           <span class="calendar-legend-holiday"><span class="cal-holiday-bar major">חג</span></span>
         </div>
       </div>
@@ -162,11 +166,24 @@ function renderCalendar(data, year, month) {
 
 function renderCalDay(num, dateStr, data, otherMonth, options = {}) {
   const today = new Date().toISOString().split('T')[0];
-  const custody = getCustodyForDate(data, dateStr);
+  const display = getCalendarDayDisplay(data, dateStr);
   const events = data.events.filter(e => e.date === dateStr);
   const isToday = dateStr === today;
   const holidays = typeof getHolidaysForDate === 'function' ? getHolidaysForDate(dateStr) : [];
-  const parentName = getParentName(data, custody);
+  const custodyClass = display.mode === 'visit'
+    ? `cal-visit-day cal-base-${display.baseParent} cal-visit-parent-${display.visitParent}`
+    : `custody-${display.parent}`;
+  const baseName = getParentName(data, display.baseParent || display.parent);
+  const visitName = getParentName(data, display.visitParent || display.parent);
+  const title = display.mode === 'visit'
+    ? `לינה: ${baseName} · ביקור: ${visitName} (${formatCustodyTimeLabel(display.dayInfo)})`
+    : `${getParentName(data, display.parent)} · משמורת עם לינה`;
+  const visitTimeLabel = display.dayInfo.pickup && display.dayInfo.returnTime
+    ? `${display.dayInfo.pickup}–${display.dayInfo.returnTime}`
+    : formatCustodyTimeLabel(display.dayInfo);
+  const visitTimeHtml = display.mode === 'visit'
+    ? `<div class="cal-visit-time" title="${formatCustodyTimeLabel(display.dayInfo)}">${visitTimeLabel}</div>`
+    : '';
   const holidayHtml = holidays.map(h => `
     <div class="cal-holiday-bar ${getHolidayBarClass(h)}" title="${h.name}">${h.name}</div>
   `).join('');
@@ -176,11 +193,15 @@ function renderCalDay(num, dateStr, data, otherMonth, options = {}) {
        ${events.length > 2 ? `<div class="cal-event-dot">+${events.length - 2} עוד</div>` : ''}`;
 
   return `
-    <div class="cal-day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} custody-${custody}${events.length ? ' has-events' : ''}${holidays.length ? ' has-holiday' : ''}"
-         ${options.print ? '' : `data-date="${dateStr}"`} title="${parentName}${holidays.length ? ' · ' + holidays.map(h => h.name).join(', ') : ''}">
-      <div class="cal-day-num">${num}</div>
-      ${holidayHtml}
-      ${eventsHtml}
+    <div class="cal-day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${custodyClass}${events.length ? ' has-events' : ''}${holidays.length ? ' has-holiday' : ''}"
+         ${options.print ? '' : `data-date="${dateStr}"`} title="${title}${holidays.length ? ' · ' + holidays.map(h => h.name).join(', ') : ''}">
+      ${isToday ? '<span class="cal-today-badge" aria-hidden="true">היום</span>' : ''}
+      <div class="cal-day-content">
+        <div class="cal-day-num">${num}</div>
+        ${visitTimeHtml}
+        ${holidayHtml}
+        ${eventsHtml}
+      </div>
     </div>
   `;
 }
@@ -218,8 +239,9 @@ function renderCalendarPrintSheet(data, year, month) {
         <h1>הורים ביחד — לוח משמורת</h1>
         <h2>${monthNames[month]} ${year}</h2>
         <div class="calendar-print-legend">
-          <span><span class="print-swatch custody-a"></span> ${getParentName(data, 'a')}</span>
-          <span><span class="print-swatch custody-b"></span> ${getParentName(data, 'b')}</span>
+          <span><span class="print-swatch custody-a"></span> ${getParentName(data, 'a')} — לינה</span>
+          <span><span class="print-swatch custody-b"></span> ${getParentName(data, 'b')} — לינה</span>
+          <span><span class="cal-legend-split-demo cal-base-a cal-visit-parent-b"></span> ביקור ללא לינה (חצי-חצי)</span>
           <span><span class="cal-holiday-bar major">חג</span> חגים בישראל</span>
         </div>
       </div>
