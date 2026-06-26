@@ -63,6 +63,7 @@ do $$
 declare
   r record;
   v_family_id uuid;
+  v_code text;
 begin
   for r in
     select distinct fm.user_id, fm.family_id
