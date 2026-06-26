@@ -15,6 +15,7 @@ let calMonth = new Date().getMonth();
 let listenersReady = false;
 let loadedUserId = null;
 let custodyPreviewWeekOffset = 0;
+let calendarHolidaysLoading = false;
 
 function captureJoinCodeFromUrl() {
   const match = window.location.hash.match(/^#join\/([A-Za-z0-9]+)/);
@@ -77,10 +78,7 @@ function render() {
       break;
     case 'calendar':
       content.innerHTML = renderCalendar(appData, calYear, calMonth);
-      loadCalendarHolidays().then(() => {
-        const page = (window.location.hash.slice(1) || 'dashboard');
-        if (page === 'calendar') render();
-      });
+      refreshCalendarHolidaysOnce();
       break;
     case 'custody':
       content.innerHTML = renderCustody(appData, custodyPreviewWeekOffset);
@@ -111,11 +109,27 @@ function render() {
   closeSidebar();
 }
 
-async function loadCalendarHolidays() {
-  const years = new Set([calYear]);
-  if (calMonth === 0) years.add(calYear - 1);
-  if (calMonth === 11) years.add(calYear + 1);
-  await Promise.all([...years].map(y => ensureHolidaysForYear(y)));
+function getCalendarHolidayYears(year, month) {
+  const years = new Set([year]);
+  if (month === 0) years.add(year - 1);
+  if (month === 11) years.add(year + 1);
+  return [...years];
+}
+
+async function refreshCalendarHolidaysOnce() {
+  if (calendarHolidaysLoading) return;
+  const years = getCalendarHolidayYears(calYear, calMonth);
+  const missing = years.filter(y => !holidayCacheByYear[y]);
+  if (!missing.length) return;
+
+  calendarHolidaysLoading = true;
+  try {
+    await Promise.all(missing.map(y => ensureHolidaysForYear(y)));
+    const page = window.location.hash.slice(1) || 'dashboard';
+    if (page === 'calendar') render();
+  } finally {
+    calendarHolidaysLoading = false;
+  }
 }
 
 function getCalendarPrintHtml() {
