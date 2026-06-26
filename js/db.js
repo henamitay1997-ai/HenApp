@@ -72,6 +72,9 @@ function translateDbError(err) {
   if (combined.includes('id_number')) {
     return 'חסרה עמודת ת.ז. בפרופיל — הרץ/י ב-Supabase את consent-forms.sql';
   }
+  if (isParentNoticesMissingError(err)) {
+    return 'חסרה טבלת תזכורות — הרץ/י ב-Supabase את parent-notices.sql';
+  }
   if (isFamilyDbError(err)) {
     return 'בעיה בטבלאות משפחה — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
   }
@@ -325,6 +328,32 @@ function mapAppUpdate(row) {
   };
 }
 
+function mapParentNotice(row) {
+  return {
+    id: row.id,
+    noticeType: row.notice_type || 'reminder',
+    presetId: row.preset_id || '',
+    title: row.title,
+    description: row.description || '',
+    date: row.date,
+    time: row.time || '',
+    childId: row.child_id || null,
+    location: row.location || '',
+    withPerson: row.with_person || '',
+    createdBy: row.created_by || 'a',
+    violatorRole: row.violator_role || null,
+    requiresAck: row.requires_ack !== false,
+    acknowledgedBy: row.acknowledged_by || null,
+    acknowledgedAt: row.acknowledged_at,
+    hasPenalty: !!row.has_penalty,
+    penaltyAmount: row.penalty_amount != null ? Number(row.penalty_amount) : null,
+    expenseId: row.expense_id || null,
+    status: row.status || 'active',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 async function tryLoadFamilyContext() {
   const { data: fid, error: fidErr } = await db().rpc('ensure_user_family');
   if (fidErr) throw fidErr;
@@ -427,6 +456,21 @@ function isConsentDbError(err) {
   return isConsentTablesMissingError(err);
 }
 
+function isParentNoticesMissingError(err) {
+  if (!err) return false;
+  const combined = `${err?.message || ''} ${err?.details || ''}`.toLowerCase();
+  if (!combined.includes('parent_notices')) return false;
+  if (['PGRST205', '42P01'].includes(err.code)) return true;
+  return combined.includes('does not exist') || combined.includes('schema cache') || combined.includes('could not find');
+}
+
+async function loadParentNotices(scopeField, scopeId) {
+  const { data, error } = await db().from('parent_notices').select('*').eq(scopeField, scopeId).order('date', { ascending: false });
+  if (error && isParentNoticesMissingError(error)) return [];
+  if (error) throw error;
+  return (data || []).map(mapParentNotice);
+}
+
 async function loadLegacyAppData() {
   const settingsRes = await db().from('user_settings').select('*').eq('user_id', dbUserId).maybeSingle();
 
@@ -444,6 +488,7 @@ async function loadLegacyAppData() {
 
   const extra = await loadConsentAndUpdates('user_id', dbUserId);
   const myProfile = await loadMyProfile();
+  const parentNotices = await loadParentNotices('user_id', dbUserId);
 
   return {
     family: null,
@@ -453,6 +498,7 @@ async function loadLegacyAppData() {
     expenses: (expensesRes.data || []).map(mapExpense),
     messages: (messagesRes.data || []).map(mapMessage),
     myProfile,
+    parentNotices,
     ...extra
   };
 }
@@ -491,6 +537,7 @@ async function loadFamilyAppData() {
   const settingsRow = settingsRes.data || (await db().from('family_settings').select('*').eq('family_id', familyId).single()).data;
   const extra = await loadConsentAndUpdates('family_id', familyId);
   const myProfile = await loadMyProfile();
+  const parentNotices = await loadParentNotices('family_id', familyId);
 
   return {
     family: familyInfo,
@@ -500,6 +547,7 @@ async function loadFamilyAppData() {
     expenses: (expensesRes.data || []).map(mapExpense),
     messages: (messagesRes.data || []).map(mapMessage),
     myProfile,
+    parentNotices,
     ...extra
   };
 }
@@ -797,7 +845,8 @@ async function deleteAllUserData() {
       db().from('messages').delete().eq('family_id', familyId),
       db().from('expenses').delete().eq('family_id', familyId),
       db().from('events').delete().eq('family_id', familyId),
-      db().from('children').delete().eq('family_id', familyId)
+      db().from('children').delete().eq('family_id', familyId),
+      db().from('parent_notices').delete().eq('family_id', familyId)
     ]);
     await db().from('family_settings').update({
       parent_a_name: 'הורה א',
@@ -968,5 +1017,85 @@ async function markAppUpdateRead(id, parentRole) {
 async function saveProfileIdNumber(idNumber) {
   const value = (idNumber || '').trim() || null;
   const { error } = await db().from('profiles').update({ id_number: value }).eq('id', dbUserId);
+  if (error) throw error;
+}
+
+async function createParentNotice(data) {
+  const rowPayload = {
+    notice_type: data.noticeType || 'reminder',
+    preset_id: data.presetId || null,
+    title: data.title,
+    description: data.description || '',
+    date: data.date,
+    time: data.time || null,
+    child_id: data.childId || null,
+    location: data.location || '',
+    with_person: data.withPerson || '',
+    created_by: data.createdBy || 'a',
+    violator_role: data.violatorRole || null,
+    requires_ack: data.requiresAck !== false,
+    has_penalty: !!data.hasPenalty,
+    penalty_amount: data.hasPenalty && data.penaltyAmount ? data.penaltyAmount : null,
+    expense_id: data.expenseId || null,
+    status: 'active',
+    updated_at: new Date().toISOString()
+  };
+  const { data: row, error } = await db().from('parent_notices').insert(entityInsertPayload(rowPayload)).select().single();
+  if (error) throw error;
+  return mapParentNotice(row);
+}
+
+async function updateParentNotice(id, data) {
+  const payload = {
+    notice_type: data.noticeType,
+    preset_id: data.presetId || null,
+    title: data.title,
+    description: data.description || '',
+    date: data.date,
+    time: data.time || null,
+    child_id: data.childId || null,
+    location: data.location || '',
+    with_person: data.withPerson || '',
+    violator_role: data.violatorRole || null,
+    requires_ack: data.requiresAck !== false,
+    has_penalty: !!data.hasPenalty,
+    penalty_amount: data.hasPenalty && data.penaltyAmount ? data.penaltyAmount : null,
+    expense_id: data.expenseId || null,
+    updated_at: new Date().toISOString()
+  };
+  let query = db().from('parent_notices').update(payload).eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function acknowledgeParentNotice(id, parentRole) {
+  const payload = {
+    acknowledged_by: parentRole,
+    acknowledged_at: new Date().toISOString(),
+    status: 'acknowledged',
+    updated_at: new Date().toISOString()
+  };
+  let query = db().from('parent_notices').update(payload).eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function linkNoticeExpense(noticeId, expenseId) {
+  let query = db().from('parent_notices').update({ expense_id: expenseId, updated_at: new Date().toISOString() }).eq('id', noticeId);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function deleteParentNotice(id) {
+  let query = db().from('parent_notices').delete().eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
   if (error) throw error;
 }

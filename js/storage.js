@@ -49,6 +49,7 @@ const DEFAULT_DATA = {
   expenses: [],
   messages: [],
   consentForms: [],
+  parentNotices: [],
   updates: [],
   myProfile: { idNumber: '' }
 };

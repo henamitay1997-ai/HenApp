@@ -9,8 +9,22 @@ function renderDashboard(data) {
   const myRole = typeof getMySenderRole === 'function' ? getMySenderRole() : 'a';
   const awaitingApproval = getExpensesAwaitingMyApproval(data, myRole);
   const myPendingRequests = getExpensesAwaitingMyResponse(data, myRole);
+  const noticesAwaiting = typeof getNoticesAwaitingMyAck === 'function'
+    ? getNoticesAwaitingMyAck(data, myRole)
+    : [];
 
   return `
+    ${noticesAwaiting.length ? `
+      <div class="card expense-approval-card" style="margin-bottom:1.25rem">
+        <div class="card-header" style="align-items:center">
+          <div>
+            <div class="card-title">🔔 ${noticesAwaiting.length} תזכורות / דיווחים חדשים</div>
+            <div class="card-subtitle">מההורה השני — ממתין לקריאה / אישור</div>
+          </div>
+          <a href="#notices" class="btn btn-primary">צפייה</a>
+        </div>
+      </div>
+    ` : ''}
     ${awaitingApproval.length ? `
       <div class="card expense-approval-card dashboard-approval-alert" style="margin-bottom:1.25rem">
         <div class="card-header" style="align-items:center">
@@ -1572,7 +1586,7 @@ function getExpenseFormHtml(data, expense = null) {
         <div class="form-group">
           <label class="form-label">קטגוריה</label>
           <select class="form-select" name="category">
-            ${['חינוך','חוגים','בריאות','ביגוד','מזון','אחר'].map(cat =>
+            ${['חינוך','חוגים','בריאות','ביגוד','מזון','הפרת משמורת','אחר'].map(cat =>
               `<option value="${cat}" ${expense?.category === cat ? 'selected' : ''}>${cat}</option>`
             ).join('')}
           </select>

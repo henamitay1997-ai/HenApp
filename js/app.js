@@ -4,6 +4,7 @@ const PAGE_TITLES = {
   custody: 'משמורת',
   children: 'ילדים',
   events: 'אירועים',
+  notices: 'תזכורות ודיווחים',
   expenses: 'הוצאות',
   approvals: 'אישורים וחתימות',
   updates: 'עדכונים',
@@ -94,6 +95,9 @@ function updateNavBadges() {
   const updatesCount = typeof getUnreadUpdatesCount === 'function'
     ? getUnreadUpdatesCount(appData, myRole)
     : 0;
+  const noticesCount = typeof getNoticesAwaitingMyAck === 'function'
+    ? getNoticesAwaitingMyAck(appData, myRole).length
+    : 0;
 
   function setBadge(selector, count, title) {
     document.querySelectorAll(selector).forEach(link => {
@@ -113,6 +117,7 @@ function updateNavBadges() {
   }
 
   setBadge('.nav-link[data-page="expenses"]', approvalCount, `${approvalCount} הוצאות ממתינות לאישורך`);
+  setBadge('.nav-link[data-page="notices"]', noticesCount, `${noticesCount} תזכורות ממתינות`);
   setBadge('.nav-link[data-page="approvals"]', consentCount, `${consentCount} טפסים ממתינים לחתימתך`);
   setBadge('.nav-link[data-page="updates"]', updatesCount, `${updatesCount} עדכונים חדשים`);
 }
@@ -152,6 +157,11 @@ function render() {
       break;
     case 'events':
       content.innerHTML = renderEvents(appData);
+      break;
+    case 'notices':
+      content.innerHTML = typeof renderNoticesPage === 'function'
+        ? renderNoticesPage(appData)
+        : '<div class="card"><p>טוען...</p></div>';
       break;
     case 'expenses':
       content.innerHTML = renderExpenses(appData);
@@ -504,7 +514,20 @@ function handleExpenseForm(expense = null) {
     try {
       showLoading(true);
       if (isEdit) await updateExpense(expense.id, payload);
-      else await createExpense(payload);
+      else {
+        const created = await createExpense(payload);
+        if (requiresApproval && typeof createAppUpdate === 'function') {
+          const partnerRole = getMySenderRole() === 'a' ? 'b' : 'a';
+          await createAppUpdate({
+            updateType: 'expense_approval',
+            title: '✋ בקשת אישור הוצאה',
+            body: `${created.title} — ${formatCurrency(created.amount)}`,
+            linkPage: 'expenses',
+            referenceId: created.id,
+            targetParentRole: partnerRole
+          });
+        }
+      }
       await refreshData();
       closeModal();
       if (!isEdit && requiresApproval) {
@@ -513,6 +536,92 @@ function handleExpenseForm(expense = null) {
       } else {
         showToast(isEdit ? 'ההוצאה עודכנה' : 'הוצאה נוספה', 'success');
       }
+      render();
+    } catch (err) {
+      handleDbError(err);
+    } finally {
+      showLoading(false);
+    }
+  });
+  document.getElementById('modal-cancel')?.addEventListener('click', () => closeModal());
+}
+
+function handleNoticeForm(notice = null, defaults = {}) {
+  const isEdit = !!notice;
+  const type = notice?.noticeType || defaults.noticeType || 'reminder';
+  const titles = {
+    reminder: 'תזכורת חדשה',
+    absence: 'דיווח אי הגעה / היעדרות',
+    cancellation: 'ביטול מפגש',
+    military: 'דיווח מילואים / צו 8',
+    violation: 'דיווח הפרת משמורת'
+  };
+
+  openModal(
+    isEdit ? 'עריכת תזכורת / דיווח' : (titles[type] || 'תזכורת / דיווח'),
+    getNoticeFormHtml(appData, notice, defaults),
+    `<button class="btn btn-primary" id="modal-save">שמור ושלח</button>
+     <button class="btn btn-secondary" id="modal-cancel">ביטול</button>`
+  );
+
+  const form = document.getElementById('notice-form');
+  if (!form) return;
+  if (typeof initNoticeFormFields === 'function') initNoticeFormFields(form);
+
+  document.getElementById('modal-save')?.addEventListener('click', async () => {
+    const data = getFormData(form);
+    const requiresAck = !!form.querySelector('[name=requiresAck]')?.checked;
+    const hasPenalty = !!form.querySelector('[name=hasPenalty]')?.checked;
+    const payload = {
+      noticeType: data.noticeType || type,
+      presetId: data.presetId || '',
+      title: data.title?.trim(),
+      description: data.description?.trim() || '',
+      date: data.date,
+      time: data.time || '',
+      childId: data.childId || null,
+      location: data.location?.trim() || '',
+      withPerson: data.withPerson?.trim() || '',
+      violatorRole: data.violatorRole || null,
+      requiresAck,
+      hasPenalty,
+      penaltyAmount: hasPenalty ? parseFloat(data.penaltyAmount) : null,
+      createdBy: getMySenderRole()
+    };
+
+    if (!payload.title || !payload.date) {
+      showToast('נא למלא כותרת ותאריך');
+      return;
+    }
+
+    try {
+      showLoading(true);
+      let saved;
+      if (isEdit) {
+        await updateParentNotice(notice.id, { ...payload, expenseId: notice.expenseId });
+        saved = { ...notice, ...payload };
+      } else {
+        saved = await createParentNotice(payload);
+        if (payload.noticeType === 'violation' && hasPenalty && payload.penaltyAmount > 0) {
+          const expenseId = await createViolationExpense(appData, saved, payload.violatorRole || 'b');
+          if (expenseId) {
+            await linkNoticeExpense(saved.id, expenseId);
+            saved.expenseId = expenseId;
+          }
+        }
+        if (typeof notifyPartnerAboutNotice === 'function') {
+          await notifyPartnerAboutNotice(appData, saved);
+        }
+      }
+      await refreshData();
+      closeModal();
+      const partner = getParentName(appData, getMySenderRole() === 'a' ? 'b' : 'a');
+      showToast(
+        payload.requiresAck
+          ? `נשמר ונשלח ל${partner} — יופיע בעדכונים`
+          : 'נשמר בהצלחה',
+        'success'
+      );
       render();
     } catch (err) {
       handleDbError(err);
@@ -878,6 +987,54 @@ function handleContentClick(e) {
         }
       });
       break;
+    case 'add-notice':
+      handleNoticeForm(null, { noticeType: target.dataset.noticeType || 'reminder' });
+      break;
+    case 'add-notice-preset': {
+      const preset = typeof NOTICE_PRESETS !== 'undefined'
+        ? NOTICE_PRESETS.find(p => p.id === target.dataset.presetId)
+        : null;
+      if (preset) {
+        handleNoticeForm(null, { noticeType: preset.type, presetId: preset.id, title: preset.title });
+      }
+      break;
+    }
+    case 'edit-notice': {
+      const notice = (appData.parentNotices || []).find(n => n.id === id);
+      if (notice) handleNoticeForm(notice);
+      break;
+    }
+    case 'ack-notice':
+      (async () => {
+        try {
+          showLoading(true);
+          await acknowledgeParentNotice(id, getMySenderRole());
+          await refreshData();
+          showToast('סומן כנקרא / מאושר', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
+      break;
+    case 'delete-notice':
+      confirmDelete('למחוק את התזכורת / הדיווח?').then(async ok => {
+        if (!ok) return;
+        try {
+          showLoading(true);
+          await deleteParentNotice(id);
+          await refreshData();
+          showToast('נמחק', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      });
+      break;
     case 'new-consent':
       handleConsentForm();
       break;
@@ -912,6 +1069,8 @@ function handleContentClick(e) {
           await refreshData();
           if (update.linkPage === 'approvals' && update.referenceId) {
             window.location.hash = `approvals&consent=${update.referenceId}`;
+          } else if (update.linkPage === 'notices') {
+            window.location.hash = 'notices';
           } else {
             window.location.hash = update.linkPage || 'updates';
           }

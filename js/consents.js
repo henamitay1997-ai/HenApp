@@ -459,7 +459,13 @@ function renderUpdatesPage(data) {
           const unread = myRole === 'a' ? !u.readByA : !u.readByB;
           return `
             <li class="updates-feed-item ${unread ? 'is-unread' : ''}">
-              <div class="updates-feed-icon">${u.updateType === 'consent_signature' ? '✍️' : u.updateType === 'expense_approval' ? '💰' : '🔔'}</div>
+              <div class="updates-feed-icon">${
+                u.updateType === 'consent_signature' ? '✍️'
+                  : u.updateType === 'expense_approval' ? '💰'
+                    : u.updateType === 'reminder' ? '🔔'
+                      : u.updateType === 'schedule_notice' ? '📋'
+                        : '🔔'
+              }</div>
               <div class="updates-feed-body">
                 <div class="updates-feed-title">${escapeHtml(u.title)}</div>
                 <div class="updates-feed-text">${escapeHtml(u.body)}</div>
