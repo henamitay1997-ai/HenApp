@@ -815,13 +815,13 @@ function setupEventListeners() {
     if (e.target.id === 'custody-form') {
       e.preventDefault();
       const fd = getFormData(e.target);
-      collectCustodyExtrasFromForm(e.target);
-      await flushCustodyPersist();
-      appData.settings.custodyPattern = fd.custodyPattern || appData.settings.custodyPattern;
-      if (fd.custodyStartDate) appData.settings.custodyStartDate = fd.custodyStartDate;
       (async () => {
         try {
+          collectCustodyExtrasFromForm(e.target);
+          appData.settings.custodyPattern = fd.custodyPattern || appData.settings.custodyPattern;
+          if (fd.custodyStartDate) appData.settings.custodyStartDate = fd.custodyStartDate;
           showLoading(true);
+          clearTimeout(custodyPersistTimer);
           await saveSettings(appData.settings);
           await refreshData();
           showToast('הגדרות משמורת נשמרו', 'success');
