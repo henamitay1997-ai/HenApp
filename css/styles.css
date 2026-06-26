@@ -1058,6 +1058,71 @@ body {
 .expense-amount { font-weight: 700; font-size: 1.05rem; direction: ltr; text-align: left; }
 .expense-split { display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: var(--text-muted); }
 
+/* Expense split picker */
+.expense-split-picker {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.split-bar-visual {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 2px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+
+.split-bar-a {
+  background: var(--parent-a-solid);
+  transition: width 0.15s ease;
+}
+
+.split-bar-b {
+  background: var(--parent-b-solid);
+  transition: width 0.15s ease;
+}
+
+.split-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.split-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-weight: 700;
+}
+
+.split-label-a .split-parent-pct { color: var(--parent-a-solid); font-size: 1.25rem; }
+.split-label-b { text-align: left; align-items: flex-end; }
+.split-label-b .split-parent-pct { color: var(--parent-b-solid); font-size: 1.25rem; }
+
+.split-parent-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.split-slider {
+  width: 100%;
+  height: 8px;
+  margin: 0.5rem 0 1rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.split-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 /* Child card */
 .child-card {
   display: flex;

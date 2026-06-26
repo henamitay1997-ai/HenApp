@@ -227,6 +227,8 @@ function handleExpenseForm(expense = null) {
   const form = document.getElementById('expense-form');
   if (!form) return;
 
+  initExpenseSplitPicker(form);
+
   document.getElementById('modal-save')?.addEventListener('click', async () => {
     const data = getFormData(form);
     const paidCheckbox = form.querySelector('[name=paid]');
@@ -234,7 +236,7 @@ function handleExpenseForm(expense = null) {
     const payload = {
       ...data,
       amount: parseFloat(data.amount),
-      splitPercent: parseInt(data.splitPercent, 10),
+      splitPercent: Math.max(0, Math.min(100, parseInt(data.splitPercent, 10) || 50)),
       paid: paidCheckbox?.checked || false,
       childId: data.childId || null
     };

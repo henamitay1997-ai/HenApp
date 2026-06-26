@@ -69,7 +69,7 @@ function renderDashboard(data) {
               <li class="list-item">
                 <div class="list-item-content">
                   <div class="list-item-title">${e.title}</div>
-                  <div class="list-item-meta">שולם ע"י ${getParentName(data, e.paidBy)} · ${e.splitPercent}% חלוקה</div>
+                  <div class="list-item-meta">שולם ע"י ${getParentName(data, e.paidBy)} · ${getParentName(data, 'a')} ${e.splitPercent}% / ${getParentName(data, 'b')} ${100 - e.splitPercent}%</div>
                 </div>
                 <div class="expense-amount">${formatCurrency(e.amount)}</div>
               </li>
@@ -626,7 +626,7 @@ function renderExpenses(data) {
                 <div class="list-item-title">${e.title}</div>
                 <div class="list-item-meta">
                   ${formatDate(e.date)} · שולם ע"י ${getParentName(data, e.paidBy)}
-                  · חלוקה ${e.splitPercent}/${100 - e.splitPercent}
+                  · ${getParentName(data, 'a')} ${e.splitPercent}% / ${getParentName(data, 'b')} ${100 - e.splitPercent}%
                   ${e.category ? ' · ' + e.category : ''}
                   ${e.childId ? ' · ' + getChildName(data, e.childId) : ''}
                 </div>
@@ -843,6 +843,9 @@ function getExpenseFormHtml(data, expense = null) {
   const childOptions = data.children.map(c =>
     `<option value="${c.id}" ${expense?.childId === c.id ? 'selected' : ''}>${c.name}</option>`
   ).join('');
+  const splitA = expense?.splitPercent ?? 50;
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
 
   return `
     <form id="expense-form">
@@ -860,17 +863,37 @@ function getExpenseFormHtml(data, expense = null) {
           <input class="form-input" type="date" name="date" value="${expense?.date || new Date().toISOString().split('T')[0]}" required>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">שולם ע"י</label>
-          <select class="form-select" name="paidBy">
-            <option value="a" ${expense?.paidBy === 'a' ? 'selected' : ''}>${data.settings.parentAName}</option>
-            <option value="b" ${expense?.paidBy === 'b' ? 'selected' : ''}>${data.settings.parentBName}</option>
-          </select>
+      <div class="form-group">
+        <label class="form-label">שולם ע"י</label>
+        <select class="form-select" name="paidBy">
+          <option value="a" ${expense?.paidBy === 'a' ? 'selected' : ''}>${parentA}</option>
+          <option value="b" ${expense?.paidBy === 'b' ? 'selected' : ''}>${parentB}</option>
+        </select>
+      </div>
+      <div class="form-group expense-split-picker">
+        <label class="form-label">חלוקה בין ההורים</label>
+        <div class="split-bar-visual" aria-hidden="true">
+          <div class="split-bar-a" style="width:${splitA}%"></div>
+          <div class="split-bar-b" style="width:${100 - splitA}%"></div>
         </div>
-        <div class="form-group">
-          <label class="form-label">אחוז חלוקה (הורה א)</label>
-          <input class="form-input" type="number" name="splitPercent" value="${expense?.splitPercent ?? 50}" min="0" max="100">
+        <div class="split-labels">
+          <div class="split-label split-label-a">
+            <span class="split-parent-name">${parentA}</span>
+            <span class="split-parent-pct" data-split-display="a">${splitA}%</span>
+          </div>
+          <div class="split-label split-label-b">
+            <span class="split-parent-name">${parentB}</span>
+            <span class="split-parent-pct" data-split-display="b">${100 - splitA}%</span>
+          </div>
+        </div>
+        <input type="range" class="split-slider" id="split-slider" min="0" max="100" step="5" value="${splitA}" aria-label="אחוז חלוקה של ${parentA}">
+        <input type="hidden" name="splitPercent" value="${splitA}">
+        <div class="split-presets" role="group" aria-label="חלוקות נפוצות">
+          <button type="button" class="btn btn-outline btn-sm" data-split-preset="50">50 / 50</button>
+          <button type="button" class="btn btn-outline btn-sm" data-split-preset="70">${parentA} 70%</button>
+          <button type="button" class="btn btn-outline btn-sm" data-split-preset="30">${parentA} 30%</button>
+          <button type="button" class="btn btn-outline btn-sm" data-split-preset="100">${parentA} 100%</button>
+          <button type="button" class="btn btn-outline btn-sm" data-split-preset="0">${parentB} 100%</button>
         </div>
       </div>
       <div class="form-row">
@@ -902,6 +925,33 @@ function getExpenseFormHtml(data, expense = null) {
       </div>
     </form>
   `;
+}
+
+function initExpenseSplitPicker(form) {
+  const slider = form.querySelector('#split-slider');
+  const hidden = form.querySelector('[name="splitPercent"]');
+  const barA = form.querySelector('.split-bar-a');
+  const barB = form.querySelector('.split-bar-b');
+  const displayA = form.querySelector('[data-split-display="a"]');
+  const displayB = form.querySelector('[data-split-display="b"]');
+  if (!slider || !hidden) return;
+
+  function updateSplit(value) {
+    const pctA = Math.max(0, Math.min(100, parseInt(value, 10) || 0));
+    const pctB = 100 - pctA;
+    slider.value = pctA;
+    hidden.value = pctA;
+    if (barA) barA.style.width = `${pctA}%`;
+    if (barB) barB.style.width = `${pctB}%`;
+    if (displayA) displayA.textContent = `${pctA}%`;
+    if (displayB) displayB.textContent = `${pctB}%`;
+  }
+
+  slider.addEventListener('input', () => updateSplit(slider.value));
+
+  form.querySelectorAll('[data-split-preset]').forEach(btn => {
+    btn.addEventListener('click', () => updateSplit(btn.dataset.splitPreset));
+  });
 }
 
 function getDayDetailHtml(data, dateStr) {
