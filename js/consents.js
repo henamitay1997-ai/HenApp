@@ -187,7 +187,27 @@ function renderConsentFormModalHtml(data, consent) {
   const parentBName = c.parentBName || getParentName(data, 'b');
   const signedA = consentHasSignature(c, 'a');
   const signedB = consentHasSignature(c, 'b');
-  const canSign = consent && canSignConsent(c, myRole);
+  const canSign = consent ? canSignConsent(consent, myRole) : true;
+  const showSignPadA = !signedA && myRole === 'a' && canSign;
+  const showSignPadB = !signedB && myRole === 'b' && canSign;
+
+  function renderSignatureBlock(roleKey, label) {
+    const idNumber = roleKey === 'a'
+      ? (c.parentAIdNumber || getMyProfileIdNumber(data))
+      : (c.parentBIdNumber || getMyProfileIdNumber(data));
+    return `
+      <div class="form-group">
+        <label class="form-label">ת.ז. ${label}</label>
+        <input class="form-input" name="parent${roleKey === 'a' ? 'A' : 'B'}IdNumber" value="${escapeHtml(idNumber)}">
+      </div>
+      <div class="signature-pad-wrap">
+        <label class="form-label">חתימה דיגיטלית — ${label}</label>
+        <p class="signature-pad-hint">חתמו/י כאן עם האצבע (בטלפון) או העכבר (במחשב)</p>
+        <canvas id="signature-canvas" class="signature-canvas" width="400" height="160" aria-label="שדה חתימה"></canvas>
+        <button type="button" class="btn btn-sm btn-secondary" data-action="clear-signature">נקה חתימה</button>
+      </div>
+    `;
+  }
 
   return `
     <form id="consent-form" class="consent-form">
@@ -237,17 +257,7 @@ function renderConsentFormModalHtml(data, consent) {
             <img src="${c.parentASignature}" alt="חתימה" class="consent-signature-img">
             <div class="consent-meta">נחתם: ${formatDateTime(c.parentASignedAt)}</div>
           </div>
-        ` : myRole === 'a' && canSign ? `
-          <div class="form-group">
-            <label class="form-label">ת.ז. הורה א׳</label>
-            <input class="form-input" name="parentAIdNumber" value="${escapeHtml(c.parentAIdNumber || getMyProfileIdNumber(data))}">
-          </div>
-          <div class="signature-pad-wrap">
-            <label class="form-label">חתימה דיגיטלית</label>
-            <canvas id="signature-canvas" class="signature-canvas" width="400" height="140"></canvas>
-            <button type="button" class="btn btn-sm btn-secondary" data-action="clear-signature">נקה חתימה</button>
-          </div>
-        ` : '<p class="consent-waiting">ממתין לחתימה</p>'}
+        ` : showSignPadA ? renderSignatureBlock('a', 'הורה א׳') : '<p class="consent-waiting">ממתין לחתימה</p>'}
       </fieldset>
 
       <fieldset class="consent-fieldset">
@@ -258,17 +268,7 @@ function renderConsentFormModalHtml(data, consent) {
             <img src="${c.parentBSignature}" alt="חתימה" class="consent-signature-img">
             <div class="consent-meta">נחתם: ${formatDateTime(c.parentBSignedAt)}</div>
           </div>
-        ` : myRole === 'b' && canSign ? `
-          <div class="form-group">
-            <label class="form-label">ת.ז. הורה ב׳</label>
-            <input class="form-input" name="parentBIdNumber" value="${escapeHtml(c.parentBIdNumber || getMyProfileIdNumber(data))}">
-          </div>
-          <div class="signature-pad-wrap">
-            <label class="form-label">חתימה דיגיטלית</label>
-            <canvas id="signature-canvas" class="signature-canvas" width="400" height="140"></canvas>
-            <button type="button" class="btn btn-sm btn-secondary" data-action="clear-signature">נקה חתימה</button>
-          </div>
-        ` : '<p class="consent-waiting">ממתין לחתימה</p>'}
+        ` : showSignPadB ? renderSignatureBlock('b', 'הורה ב׳') : '<p class="consent-waiting">ממתין לחתימה</p>'}
       </fieldset>
 
       <fieldset class="consent-fieldset consent-indemnity">
@@ -289,12 +289,25 @@ function formatDateTime(iso) {
 
 function initSignaturePad(canvas) {
   if (!canvas) return null;
-  const ctx = canvas.getContext('2d');
-  ctx.strokeStyle = '#1e293b';
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
 
+  const dpr = window.devicePixelRatio || 1;
+  function resize() {
+    const width = Math.max(canvas.clientWidth || canvas.parentElement?.clientWidth || 320, 280);
+    const height = 160;
+    canvas.style.width = '100%';
+    canvas.style.height = `${height}px`;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    return ctx;
+  }
+
+  let ctx = resize();
   let drawing = false;
   let hasStroke = false;
 
@@ -305,8 +318,8 @@ function initSignaturePad(canvas) {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     return {
-      x: (clientX - rect.left) * scaleX,
-      y: (clientY - rect.top) * scaleY
+      x: (clientX - rect.left) * scaleX / dpr,
+      y: (clientY - rect.top) * scaleY / dpr
     };
   }
 
@@ -339,7 +352,7 @@ function initSignaturePad(canvas) {
 
   const pad = {
     clear() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx = resize();
       hasStroke = false;
     },
     isEmpty() { return !hasStroke; },
@@ -347,6 +360,7 @@ function initSignaturePad(canvas) {
   };
 
   activeSignaturePad = pad;
+  requestAnimationFrame(() => resize());
   return pad;
 }
 

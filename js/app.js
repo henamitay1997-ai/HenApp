@@ -553,7 +553,9 @@ function handleConsentForm(consent = null) {
   );
 
   const canvas = document.getElementById('signature-canvas');
-  if (canvas && typeof initSignaturePad === 'function') initSignaturePad(canvas);
+  if (canvas && typeof initSignaturePad === 'function') {
+    requestAnimationFrame(() => initSignaturePad(canvas));
+  }
 
   const form = document.getElementById('consent-form');
   form?.querySelector('#consent-child-select')?.addEventListener('change', (e) => {
@@ -616,8 +618,14 @@ function handleConsentForm(consent = null) {
   });
 
   document.getElementById('modal-sign-consent')?.addEventListener('click', async () => {
+    const canvas = document.getElementById('signature-canvas');
+    if (!canvas) {
+      showToast('שדה החתימה לא נמצא — גללו לחלק החתימה שלכם (א׳ או ב׳)');
+      return;
+    }
     if (!activeSignaturePad || activeSignaturePad.isEmpty()) {
-      showToast('נא לחתום בשדה החתימה');
+      showToast('נא לחתום בשדה החתימה למעלה');
+      canvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     const idField = form.querySelector(`[name=parent${myRole === 'a' ? 'A' : 'B'}IdNumber]`);
