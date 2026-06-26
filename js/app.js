@@ -1245,7 +1245,13 @@ function handleContentClick(e) {
       downloadExpenseReportPdf(appData);
       break;
     case 'download-violations-pdf':
-      downloadViolationsReportPdf(appData);
+      downloadViolationsReportPdf(appData).catch(err => {
+        console.error(err);
+        showToast('שגיאה ביצירת הדוח');
+      });
+      break;
+    case 'print-violations-report':
+      printViolationsReport(appData);
       break;
     case 'export-violations-json':
       exportViolationsBackupJson(appData);

@@ -106,6 +106,7 @@ function renderViolationsArchiveSection(data) {
         </div>
         <div class="violations-export-actions">
           <button type="button" class="btn btn-sm btn-primary" data-action="download-violations-pdf">📄 דוח PDF</button>
+          <button type="button" class="btn btn-sm btn-secondary" data-action="print-violations-report">🖨️ הדפס</button>
           <button type="button" class="btn btn-sm btn-secondary" data-action="export-violations-json">💾 גיבוי JSON</button>
         </div>
       </div>

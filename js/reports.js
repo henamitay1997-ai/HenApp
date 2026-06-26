@@ -244,8 +244,11 @@ function getViolationsReportHtml(data, rows) {
   const rowsHtml = rows.map(r => {
     const dateCell = [formatPdfDate(r.date), r.time].filter(Boolean).join(' · ');
     const details = [r.description, r.location].filter(Boolean).join(' · ');
+    const ackDate = r.acknowledgedAt
+      ? formatPdfDate(String(r.acknowledgedAt).slice(0, 10))
+      : '';
     const ackCell = r.acknowledged
-      ? `${r.acknowledgedBy}${r.acknowledgedAt ? ' · ' + formatPdfDate(r.acknowledgedAt.slice(0, 10)) : ''}`
+      ? `${r.acknowledgedBy}${ackDate ? ' · ' + ackDate : ''}`
       : 'ממתין לאישור';
     return `
       <tr>
@@ -268,8 +271,8 @@ function getViolationsReportHtml(data, rows) {
       font-family:'Heebo','David',Arial,sans-serif;
       color:#0f172a;
       background:#fff;
-      width:210mm;
-      max-width:210mm;
+      width:794px;
+      max-width:794px;
       box-sizing:border-box;
       padding:12mm 14mm;
       line-height:1.75;
@@ -343,6 +346,80 @@ function getViolationsReportHtml(data, rows) {
   `;
 }
 
+async function savePdfFromElement(element, { filename, orientation = 'portrait' }) {
+  await loadHtml2Pdf();
+
+  if (document.fonts?.ready) {
+    await document.fonts.ready;
+  }
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const canvasWidth = Math.max(element.scrollWidth || 0, element.offsetWidth || 0, 794);
+  const canvasHeight = Math.max(element.scrollHeight || 0, element.offsetHeight || 0, 1123);
+
+  await html2pdf().set({
+    margin: [8, 8, 8, 8],
+    filename,
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      letterRendering: true,
+      scrollX: 0,
+      scrollY: 0,
+      backgroundColor: '#ffffff',
+      width: canvasWidth,
+      height: canvasHeight,
+      windowWidth: canvasWidth,
+      windowHeight: canvasHeight
+    },
+    jsPDF: { unit: 'mm', format: 'a4', orientation },
+    pagebreak: { mode: ['css', 'legacy'] }
+  }).from(element).save();
+}
+
+function getViolationsPrintDocumentHtml(data, rows) {
+  const body = getViolationsReportHtml(data, rows);
+  return `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>דוח הפרות משמורת</title>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    @page { size: A4; margin: 10mm; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    body { font-family: 'Heebo', Arial, sans-serif; }
+  </style>
+</head>
+<body>${body}</body>
+</html>`;
+}
+
+function printViolationsReport(data) {
+  const rows = typeof buildViolationsReportRows === 'function'
+    ? buildViolationsReportRows(data)
+    : [];
+  if (!rows.length) {
+    showToast('אין דיווחי הפרה להדפסה');
+    return;
+  }
+  const win = window.open('', '_blank', 'noopener,noreferrer');
+  if (!win) {
+    showToast('לא ניתן לפתוח חלון הדפסה — בדקי חסימת חלונות קופצים');
+    return;
+  }
+  win.document.open();
+  win.document.write(getViolationsPrintDocumentHtml(data, rows));
+  win.document.close();
+  win.onload = () => {
+    setTimeout(() => {
+      win.focus();
+      win.print();
+    }, 600);
+  };
+}
+
 async function downloadViolationsReportPdf(data) {
   const rows = typeof buildViolationsReportRows === 'function'
     ? buildViolationsReportRows(data)
@@ -358,7 +435,7 @@ async function downloadViolationsReportPdf(data) {
     'position:fixed',
     'top:0',
     'left:0',
-    'width:210mm',
+    'width:794px',
     'background:#fff',
     'z-index:100001',
     'overflow:visible',
@@ -371,71 +448,20 @@ async function downloadViolationsReportPdf(data) {
 
   const element = host.querySelector('#violations-report-pdf');
   const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `violations-report-${dateStr}.pdf`;
 
   try {
     showLoading(true);
-    if (document.fonts?.ready) await document.fonts.ready;
-    await new Promise(resolve => setTimeout(resolve, 500));
-    await loadHtml2Pdf();
-
-    element.style.width = '210mm';
-    element.style.maxWidth = '210mm';
-    const rect = element.getBoundingClientRect();
-    const captureWidth = Math.max(Math.round(rect.width), 794);
-    const captureHeight = Math.max(Math.round(element.scrollHeight), Math.round(rect.height), 1123);
-
-    const canvas = await html2pdf()
-      .set({
-        margin: 0,
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          scrollX: 0,
-          scrollY: 0,
-          width: captureWidth,
-          height: captureHeight,
-          windowWidth: captureWidth,
-          windowHeight: captureHeight
-        }
-      })
-      .from(element)
-      .toCanvas()
-      .get('canvas');
-
-    const jsPDF = window.jspdf?.jsPDF;
-    if (!jsPDF) throw new Error('PDF library missing');
-
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 8;
-    const contentW = pageW - margin * 2;
-    const imgW = contentW;
-    const imgH = (canvas.height * imgW) / canvas.width;
-    const imgData = canvas.toDataURL('image/jpeg', 0.96);
-
-    let heightLeft = imgH;
-    let position = margin;
-    pdf.addImage(imgData, 'JPEG', margin, position, imgW, imgH);
-    heightLeft -= (pageH - margin * 2);
-
-    while (heightLeft > 0) {
-      pdf.addPage();
-      position = margin - (imgH - heightLeft);
-      pdf.addImage(imgData, 'JPEG', margin, position, imgW, imgH);
-      heightLeft -= (pageH - margin * 2);
-    }
-
-    pdf.save(`דוח-הפרות-משמורת-${dateStr}.pdf`);
+    element.style.width = '794px';
+    element.style.maxWidth = '794px';
+    await savePdfFromElement(element, { filename, orientation: 'portrait' });
     showToast('דוח ההפרות הורד בהצלחה', 'success');
   } catch (err) {
     console.error(err);
-    showToast('שגיאה ביצירת הדוח');
+    showToast('מנסה דרך חלון הדפסה...', 'info');
+    printViolationsReport(data);
   } finally {
-    document.body.removeChild(host);
+    if (host.parentNode) host.parentNode.removeChild(host);
     showLoading(false);
   }
 }
