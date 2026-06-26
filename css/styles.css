@@ -643,8 +643,14 @@ body {
 
 .custody-mode-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.75rem;
+}
+
+@media (min-width: 900px) {
+  .custody-mode-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .custody-mode-card {
@@ -746,6 +752,37 @@ body {
   background: var(--surface-2);
   color: var(--text-muted);
   border: 1px solid var(--border);
+}
+
+.custody-cycle-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid #bfdbfe;
+}
+
+.biweekly-weeks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.biweekly-week-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  background: var(--surface-2);
+}
+
+.biweekly-week-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+  color: var(--text);
 }
 
 .parent-picker {
@@ -856,6 +893,10 @@ body {
 
 @media (max-width: 768px) {
   .custody-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .biweekly-weeks {
     grid-template-columns: 1fr;
   }
 

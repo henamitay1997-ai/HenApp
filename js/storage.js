@@ -1,5 +1,8 @@
 const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
+const BIWEEKLY_WEEK1_DEFAULT = { 0: 'a', 1: 'a', 2: 'b', 3: 'b', 4: 'b', 5: 'a', 6: 'a' };
+const BIWEEKLY_WEEK2_DEFAULT = { 0: 'b', 1: 'b', 2: 'a', 3: 'a', 4: 'b', 5: 'b', 6: 'b' };
+
 const DEFAULT_DATA = {
   settings: {
     parentAName: 'הורה א',
@@ -10,6 +13,7 @@ const DEFAULT_DATA = {
     weekSchedule: {
       0: 'a', 1: 'a', 2: 'a', 3: 'b', 4: 'b', 5: 'b', 6: 'b'
     },
+    weekSchedule2: { ...BIWEEKLY_WEEK2_DEFAULT },
     manualDates: {}
   },
   children: [],
@@ -22,8 +26,29 @@ function getParentName(data, parent) {
   return parent === 'a' ? data.settings.parentAName : data.settings.parentBName;
 }
 
+function getBiweeklyPresets() {
+  return {
+    week1: { ...BIWEEKLY_WEEK1_DEFAULT },
+    week2: { ...BIWEEKLY_WEEK2_DEFAULT }
+  };
+}
+
+function applyCommonBiweeklyPreset(settings) {
+  const presets = getBiweeklyPresets();
+  settings.weekSchedule = { ...presets.week1 };
+  settings.weekSchedule2 = { ...presets.week2 };
+}
+
+function getBiweeklyWeekIndex(dateStr, custodyStartDate) {
+  const date = new Date(dateStr + 'T12:00:00');
+  const start = new Date(custodyStartDate + 'T12:00:00');
+  const diffDays = Math.floor((date - start) / (1000 * 60 * 60 * 24));
+  const weekNum = Math.floor(diffDays / 7);
+  return weekNum % 2 === 0 ? 1 : 2;
+}
+
 function getCustodyForDate(data, dateStr) {
-  const { custodyPattern, custodyStartDate, weekSchedule, manualDates = {} } = data.settings;
+  const { custodyPattern, custodyStartDate, weekSchedule, weekSchedule2, manualDates = {} } = data.settings;
   const date = new Date(dateStr + 'T12:00:00');
   const dayOfWeek = date.getDay();
 
@@ -34,6 +59,12 @@ function getCustodyForDate(data, dateStr) {
 
   if (custodyPattern === 'weekly') {
     return weekSchedule[dayOfWeek] || 'a';
+  }
+
+  if (custodyPattern === 'biweekly') {
+    const weekIndex = getBiweeklyWeekIndex(dateStr, custodyStartDate);
+    const schedule = weekIndex === 1 ? weekSchedule : (weekSchedule2 || weekSchedule);
+    return schedule[dayOfWeek] || 'a';
   }
 
   const start = new Date(custodyStartDate + 'T12:00:00');

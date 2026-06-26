@@ -494,6 +494,15 @@ function setupEventListeners() {
       return;
     }
 
+    if (e.target.closest('[data-week2-day]')) {
+      const btn = e.target.closest('[data-week2-day]');
+      const day = parseInt(btn.dataset.week2Day, 10);
+      if (!appData.settings.weekSchedule2) appData.settings.weekSchedule2 = { ...getBiweeklyPresets().week2 };
+      appData.settings.weekSchedule2[day] = btn.dataset.parent;
+      saveCustodySettings();
+      return;
+    }
+
     if (e.target.closest('[data-week-day]')) {
       const btn = e.target.closest('[data-week-day]');
       const day = parseInt(btn.dataset.weekDay, 10);
@@ -507,6 +516,27 @@ function setupEventListeners() {
       if (!appData.settings.manualDates) appData.settings.manualDates = {};
       appData.settings.manualDates[btn.dataset.manualDate] = btn.dataset.parent;
       saveCustodySettings();
+      return;
+    }
+
+    if (e.target.closest('[data-custody-fill-week1]')) {
+      const parent = e.target.closest('[data-custody-fill-week1]').dataset.custodyFillWeek1;
+      for (let i = 0; i < 7; i++) appData.settings.weekSchedule[i] = parent;
+      saveCustodySettings('שבוע 1 עודכן');
+      return;
+    }
+
+    if (e.target.closest('[data-custody-fill-week2]')) {
+      const parent = e.target.closest('[data-custody-fill-week2]').dataset.custodyFillWeek2;
+      if (!appData.settings.weekSchedule2) appData.settings.weekSchedule2 = { ...getBiweeklyPresets().week2 };
+      for (let i = 0; i < 7; i++) appData.settings.weekSchedule2[i] = parent;
+      saveCustodySettings('שבוע 2 עודכן');
+      return;
+    }
+
+    if (e.target.closest('[data-custody-preset]')) {
+      applyCommonBiweeklyPreset(appData.settings);
+      saveCustodySettings('הדוגמה הנפוצה נטענה');
       return;
     }
 
@@ -558,6 +588,11 @@ function setupEventListeners() {
     if (e.target.name === 'custodyPattern' && e.target.closest('#custody-form')) {
       appData.settings.custodyPattern = e.target.value;
       custodyPreviewWeekOffset = 0;
+      if (e.target.value === 'biweekly') {
+        if (!appData.settings.weekSchedule2) {
+          appData.settings.weekSchedule2 = { ...getBiweeklyPresets().week2 };
+        }
+      }
       saveCustodySettings();
     }
   });

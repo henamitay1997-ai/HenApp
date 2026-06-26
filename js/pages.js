@@ -190,6 +190,12 @@ function renderCustody(data, previewWeekOffset = 0) {
       desc: 'אותם ימים בכל שבוע — למשל א\'–ד\' אצל הורה א, ה\'–ש\' אצל הורה ב'
     },
     {
+      id: 'biweekly',
+      icon: '🔁',
+      title: 'לוח דו-שבועי',
+      desc: 'שני לוחות שונים שמתחלפים — למשל שבוע א\'–ב\'–א\' ואז שבוע ב\'–א\'–ב\''
+    },
+    {
       id: 'manual',
       icon: '✏️',
       title: 'סידור ידני',
@@ -231,8 +237,8 @@ function renderCustody(data, previewWeekOffset = 0) {
         <div class="card-header">
           <div class="card-title">תצוגה מקדימה</div>
         </div>
-        <p class="custody-intro">כך תיראה המשמורת ב-${custodyPattern === 'manual' ? 'שבועיים הקרובים' : 'השבוע הקרוב'}.</p>
-        ${getWeekPreview(data, custodyPattern === 'manual' ? 14 : 7, 0)}
+        <p class="custody-intro">כך תיראה המשמורת ב-${custodyPattern === 'manual' || custodyPattern === 'biweekly' ? 'שבועיים הקרובים' : 'השבוע הקרוב'}.</p>
+        ${getWeekPreview(data, custodyPattern === 'manual' || custodyPattern === 'biweekly' ? 14 : 7, 0)}
       </div>
 
       <div class="custody-save-bar">
@@ -243,26 +249,47 @@ function renderCustody(data, previewWeekOffset = 0) {
 }
 
 function renderParentPicker(data, type, id, currentParent) {
-  const parentA = getParentName(data, 'a');
-  const parentB = getParentName(data, 'b');
-  const attr = type === 'week' ? 'data-week-day' : 'data-manual-date';
+  const attrMap = {
+    week: 'data-week-day',
+    week2: 'data-week2-day',
+    manual: 'data-manual-date'
+  };
+  const attr = attrMap[type] || 'data-week-day';
 
   return `
     <div class="parent-picker" role="group" aria-label="בחירת הורה">
       <button type="button" class="parent-pick parent-a ${currentParent === 'a' ? 'active' : ''}"
               ${attr}="${id}" data-parent="a" aria-pressed="${currentParent === 'a'}">
-        ${parentA}
+        ${getParentName(data, 'a')}
       </button>
       <button type="button" class="parent-pick parent-b ${currentParent === 'b' ? 'active' : ''}"
               ${attr}="${id}" data-parent="b" aria-pressed="${currentParent === 'b'}">
-        ${parentB}
+        ${getParentName(data, 'b')}
       </button>
     </div>
   `;
 }
 
+function renderWeekDayList(data, schedule, type) {
+  return `
+    <ul class="custody-day-list">
+      ${DAY_NAMES.map((name, i) => {
+        const parent = schedule[i] || 'a';
+        return `
+          <li class="custody-day-row">
+            <div class="custody-day-label">
+              <span class="custody-day-name">יום ${name}</span>
+            </div>
+            ${renderParentPicker(data, type, i, parent)}
+          </li>
+        `;
+      }).join('')}
+    </ul>
+  `;
+}
+
 function renderCustodyEditor(data, pattern, parentA, parentB, previewWeekOffset) {
-  const { weekSchedule, custodyStartDate, manualDates = {} } = data.settings;
+  const { weekSchedule, weekSchedule2, custodyStartDate, manualDates = {} } = data.settings;
 
   if (pattern === 'alternating-weeks') {
     return `
@@ -318,6 +345,51 @@ function renderCustodyEditor(data, pattern, parentA, parentB, previewWeekOffset)
             <input class="form-input" type="date" id="custodyStartDate" name="custodyStartDate" value="${custodyStartDate}">
           </div>
         ` : ''}
+      </div>
+    `;
+  }
+
+  if (pattern === 'biweekly') {
+    const week2 = weekSchedule2 || getBiweeklyPresets().week2;
+
+    return `
+      <div class="card custody-editor">
+        <div class="card-header">
+          <div class="card-title">לוח דו-שבועי — שני לוחות שמתחלפים</div>
+        </div>
+        <div class="custody-info-box">
+          <p><strong>איך זה עובד?</strong> מגדירים לוח נפרד לכל שבוע במחזור. שבוע 1, אחר כך שבוע 2, ואז חוזר חלילה.</p>
+          <p><strong>דוגמה נפוצה:</strong><br>
+            שבוע 1: א'–ב' ${parentA}, ג'–ה' ${parentB}, ו'–ש' ${parentA}<br>
+            שבוע 2: א'–ב' ${parentB}, ג'–ד' ${parentA}, ה'–ש' ${parentB}
+          </p>
+        </div>
+        <div class="custody-quick-actions">
+          <button type="button" class="btn btn-outline btn-sm" data-custody-preset="common-biweekly">טען את הדוגמה הנפוצה ↑</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="custodyStartDate">מתי מתחיל שבוע 1 במחזור?</label>
+          <input class="form-input" type="date" id="custodyStartDate" name="custodyStartDate" value="${custodyStartDate}">
+          <p class="form-hint">בחרו תאריך שנמצא בשבוע 1 (לפי הלוח למטה). מהשבוע הבא יופעל שבוע 2.</p>
+        </div>
+        <div class="biweekly-weeks">
+          <div class="biweekly-week-block">
+            <h3 class="biweekly-week-title">שבוע 1 במחזור</h3>
+            <div class="custody-quick-actions">
+              <button type="button" class="btn btn-outline btn-sm" data-custody-fill-week1="a">כל השבוע → ${parentA}</button>
+              <button type="button" class="btn btn-outline btn-sm" data-custody-fill-week1="b">כל השבוע → ${parentB}</button>
+            </div>
+            ${renderWeekDayList(data, weekSchedule, 'week')}
+          </div>
+          <div class="biweekly-week-block">
+            <h3 class="biweekly-week-title">שבוע 2 במחזור</h3>
+            <div class="custody-quick-actions">
+              <button type="button" class="btn btn-outline btn-sm" data-custody-fill-week2="a">כל השבוע → ${parentA}</button>
+              <button type="button" class="btn btn-outline btn-sm" data-custody-fill-week2="b">כל השבוע → ${parentB}</button>
+            </div>
+            ${renderWeekDayList(data, week2, 'week2')}
+          </div>
+        </div>
       </div>
     `;
   }
@@ -409,9 +481,13 @@ function getWeekPreview(data, days = 7, startOffset = 0) {
     const dateStr = d.toISOString().split('T')[0];
     const custody = getCustodyForDate(data, dateStr);
     const isManual = data.settings.custodyPattern === 'manual' && data.settings.manualDates?.[dateStr];
+    const biweeklyWeek = data.settings.custodyPattern === 'biweekly'
+      ? getBiweeklyWeekIndex(dateStr, data.settings.custodyStartDate)
+      : null;
     html += `
       <li class="custody-preview-row ${dateStr === todayStr ? 'is-today' : ''}">
         <span class="custody-preview-date">${formatDateShort(dateStr)}</span>
+        ${biweeklyWeek ? `<span class="custody-cycle-tag">שבוע ${biweeklyWeek}</span>` : ''}
         <span class="badge badge-${custody}">${getParentName(data, custody)}</span>
         ${isManual ? '<span class="custody-manual-tag">ידני</span>' : ''}
       </li>
