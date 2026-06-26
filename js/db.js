@@ -33,6 +33,20 @@ function getInviteLink(code) {
   return `${base}#join/${code}`;
 }
 
+function isConsentTablesMissingError(err) {
+  if (!err) return false;
+  const msg = (err.message || '').toLowerCase();
+  const details = (err.details || '').toLowerCase();
+  const combined = `${msg} ${details}`;
+  const mentionsConsent = combined.includes('consent_forms') || combined.includes('app_updates');
+  if (!mentionsConsent) return false;
+  if (['PGRST205', '42P01'].includes(err.code)) return true;
+  return combined.includes('does not exist')
+    || combined.includes('could not find')
+    || combined.includes('schema cache')
+    || combined.includes('not found in the schema');
+}
+
 function translateDbError(err) {
   const msg = err?.message || '';
   const details = err?.details || '';
@@ -43,17 +57,23 @@ function translateDbError(err) {
   if (combined.includes('requires_approval') || combined.includes('approval_status') || combined.includes('agree_to_split')) {
     return 'חסרות עמודות אישור הוצאות — הרץ/י ב-Supabase את expense-approval.sql';
   }
+  if (combined.includes('row-level security') || combined.includes('violates row-level security policy')) {
+    if (combined.includes('consent_forms') || combined.includes('app_updates')) {
+      return 'שגיאת הרשאות לטפסי אישור — הרץ/י ב-Supabase את fix-consent-tables.sql';
+    }
+    return 'שגיאת הרשאות — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
+  }
+  if (isConsentTablesMissingError(err)) {
+    return 'טבלאות האישורים לא נטענו ב-API — הרץ/י consent-forms.sql ואז fix-consent-tables.sql, והמתין/י דקה';
+  }
   if (combined.includes('consent_forms') || combined.includes('app_updates')) {
-    return 'חסרות טבלאות אישורים — הרץ/י ב-Supabase את consent-forms.sql';
+    return msg || 'שגיאה בשמירת טופס האישור';
   }
   if (combined.includes('id_number')) {
     return 'חסרה עמודת ת.ז. בפרופיל — הרץ/י ב-Supabase את consent-forms.sql';
   }
   if (isFamilyDbError(err)) {
     return 'בעיה בטבלאות משפחה — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
-  }
-  if (combined.includes('row-level security') || combined.includes('RLS')) {
-    return 'שגיאת הרשאות — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
   }
   if (combined.includes('JWT')) return 'פג תוקף ההתחברות — התחבר/י מחדש';
   return msg || 'שגיאה בשמירה';
@@ -404,8 +424,7 @@ async function loadConsentAndUpdates(scopeField, scopeId) {
 }
 
 function isConsentDbError(err) {
-  const combined = `${err?.message || ''} ${err?.details || ''}`.toLowerCase();
-  return combined.includes('consent_forms') || combined.includes('app_updates');
+  return isConsentTablesMissingError(err);
 }
 
 async function loadLegacyAppData() {
@@ -888,18 +907,15 @@ async function signConsentForm(id, { parentRole, signature, idNumber, parentName
   };
 
   let fetchQuery = db().from('consent_forms').select('*').eq('id', id);
-  if (familyId) fetchQuery = fetchQuery.eq('family_id', familyId);
-  else fetchQuery = fetchQuery.eq('user_id', dbUserId);
-  const { data: existing, error: fetchErr } = await fetchQuery.single();
+  const { data: existing, error: fetchErr } = await fetchQuery.maybeSingle();
   if (fetchErr) throw fetchErr;
+  if (!existing) throw new Error('הטופס לא נמצא');
 
   const hasA = parentRole === 'a' ? true : !!existing.parent_a_signature;
   const hasB = parentRole === 'b' ? true : !!existing.parent_b_signature;
   payload.status = hasA && hasB ? 'completed' : 'pending_signature';
 
   let query = db().from('consent_forms').update(payload).eq('id', id);
-  if (familyId) query = query.eq('family_id', familyId);
-  else query = query.eq('user_id', dbUserId);
   const { error } = await query;
   if (error) throw error;
 }

@@ -35,7 +35,7 @@ create table if not exists public.consent_forms (
   updated_at timestamptz default now()
 );
 
--- 3. טבלת עדכונים באפליקציה
+-- 3. טבלת עדכונים
 create table if not exists public.app_updates (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users on delete cascade not null,
@@ -55,59 +55,40 @@ create index if not exists consent_forms_family_idx on public.consent_forms (fam
 create index if not exists consent_forms_user_idx on public.consent_forms (user_id);
 create index if not exists app_updates_family_idx on public.app_updates (family_id);
 
+-- 4. הרשאות API (חשוב!)
+grant usage on schema public to authenticated, anon;
+grant select, insert, update, delete on public.consent_forms to authenticated;
+grant select, insert, update, delete on public.app_updates to authenticated;
+
+-- 5. RLS — אותו עיקרון כמו הוצאות / הודעות
 alter table public.consent_forms enable row level security;
 alter table public.app_updates enable row level security;
 
--- 4. הרשאות — עובד גם עם משפחה וגם בלי
 drop policy if exists "Users manage own consent forms" on public.consent_forms;
-create policy "Users manage own consent forms" on public.consent_forms
+drop policy if exists "Family members manage consent forms" on public.consent_forms;
+create policy "Family members manage consent forms" on public.consent_forms
   for all using (
-    user_id = auth.uid()
-    or (
-      family_id is not null
-      and exists (
-        select 1 from public.family_members fm
-        where fm.family_id = consent_forms.family_id
-          and fm.user_id = auth.uid()
-      )
-    )
+    (family_id is not null and family_id in (select public.user_family_ids()))
+    or user_id = auth.uid()
   )
   with check (
-    user_id = auth.uid()
-    or (
-      family_id is not null
-      and exists (
-        select 1 from public.family_members fm
-        where fm.family_id = consent_forms.family_id
-          and fm.user_id = auth.uid()
-      )
-    )
+    (family_id is not null and family_id in (select public.user_family_ids()))
+    or user_id = auth.uid()
   );
 
 drop policy if exists "Users manage own app updates" on public.app_updates;
-create policy "Users manage own app updates" on public.app_updates
+drop policy if exists "Family members manage app updates" on public.app_updates;
+create policy "Family members manage app updates" on public.app_updates
   for all using (
-    user_id = auth.uid()
-    or (
-      family_id is not null
-      and exists (
-        select 1 from public.family_members fm
-        where fm.family_id = app_updates.family_id
-          and fm.user_id = auth.uid()
-      )
-    )
+    (family_id is not null and family_id in (select public.user_family_ids()))
+    or user_id = auth.uid()
   )
   with check (
-    user_id = auth.uid()
-    or (
-      family_id is not null
-      and exists (
-        select 1 from public.family_members fm
-        where fm.family_id = app_updates.family_id
-          and fm.user_id = auth.uid()
-      )
-    )
+    (family_id is not null and family_id in (select public.user_family_ids()))
+    or user_id = auth.uid()
   );
 
--- אם הרצת עד כאן בלי שגיאות — הכל מוכן!
-select '✅ טבלאות האישורים נוצרו בהצלחה!' as result;
+-- 6. רענון cache של ה-API (חובה אחרי יצירת טבלאות!)
+notify pgrst, 'reload schema';
+
+select '✅ טבלאות האישורים מוכנות! רענני/י את האתר (Ctrl+F5) ונסי/י שוב.' as result;
