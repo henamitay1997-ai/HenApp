@@ -146,3 +146,64 @@ function getUpcomingEvents(data, days = 7) {
 function getPendingExpenses(data) {
   return data.expenses.filter(e => !e.paid);
 }
+
+function calculateExpenseSummary(data) {
+  const parentAName = getParentName(data, 'a');
+  const parentBName = getParentName(data, 'b');
+
+  let paidA = 0;
+  let paidB = 0;
+  let shouldA = 0;
+  let shouldB = 0;
+  let total = 0;
+
+  const rows = [...data.expenses]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(e => {
+      const shareA = e.amount * (e.splitPercent / 100);
+      const shareB = e.amount - shareA;
+      total += e.amount;
+      shouldA += shareA;
+      shouldB += shareB;
+      if (e.paidBy === 'a') paidA += e.amount;
+      else paidB += e.amount;
+
+      return {
+        ...e,
+        shareA,
+        shareB,
+        paidByName: getParentName(data, e.paidBy)
+      };
+    });
+
+  const balanceA = paidA - shouldA;
+  let settlement = null;
+
+  if (Math.abs(balanceA) >= 1) {
+    if (balanceA > 0) {
+      settlement = {
+        from: 'b',
+        fromName: parentBName,
+        to: 'a',
+        toName: parentAName,
+        amount: balanceA
+      };
+    } else {
+      settlement = {
+        from: 'a',
+        fromName: parentAName,
+        to: 'b',
+        toName: parentBName,
+        amount: -balanceA
+      };
+    }
+  }
+
+  return {
+    parentA: { name: parentAName, paid: paidA, shouldPay: shouldA, balance: balanceA },
+    parentB: { name: parentBName, paid: paidB, shouldPay: shouldB, balance: -balanceA },
+    total,
+    settlement,
+    rows
+  };
+}

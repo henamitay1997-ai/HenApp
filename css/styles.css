@@ -1123,6 +1123,218 @@ body {
   gap: 0.4rem;
 }
 
+/* Expense summary & table */
+.expense-settlement {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1.25rem;
+}
+
+.expense-settlement-balanced {
+  background: var(--success-bg);
+  border: 2px solid #86efac;
+}
+
+.expense-settlement-owed {
+  background: var(--warning-bg);
+  border: 2px solid #fcd34d;
+}
+
+.expense-settlement-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.expense-settlement-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.expense-settlement-amount {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--text);
+  direction: ltr;
+  text-align: right;
+  margin-bottom: 0.35rem;
+}
+
+.expense-settlement-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.expense-summary-card { margin-bottom: 1rem; }
+
+.expense-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.expense-summary-col {
+  padding: 1rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+}
+
+.expense-summary-a {
+  background: #dbeafe;
+  border-color: #60a5fa;
+}
+
+.expense-summary-b {
+  background: #ffedd5;
+  border-color: #fb923c;
+}
+
+.expense-summary-parent {
+  font-size: 1rem;
+  font-weight: 800;
+  margin-bottom: 0.75rem;
+}
+
+.expense-summary-a .expense-summary-parent { color: #1e40af; }
+.expense-summary-b .expense-summary-parent { color: #c2410c; }
+
+.expense-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.expense-summary-row.total {
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 2px solid rgba(0,0,0,0.1);
+  border-bottom: none;
+  font-size: 0.95rem;
+}
+
+.expense-summary-row.positive strong { color: var(--success); }
+.expense-summary-row.negative strong { color: var(--danger); }
+
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.75rem 0.65rem;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.data-table th {
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+
+.data-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.data-table tfoot td {
+  background: var(--surface-2);
+  border-top: 2px solid var(--border);
+}
+
+.expense-table-title {
+  font-weight: 700;
+}
+
+.expense-table-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.expense-share-a { color: #1d4ed8; font-weight: 600; }
+.expense-share-b { color: #c2410c; font-weight: 600; }
+
+.expense-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.row-pending {
+  background: #fffbeb;
+}
+
+@media (max-width: 768px) {
+  .expense-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tr {
+    display: block;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    background: var(--surface);
+  }
+
+  .data-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  .data-table td:last-child {
+    border-bottom: none;
+  }
+
+  .data-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .data-table tfoot {
+    display: block;
+  }
+
+  .data-table tfoot tr {
+    background: var(--surface-2);
+  }
+
+  .expense-table-actions {
+    justify-content: flex-end;
+    width: 100%;
+  }
+}
+
 /* Child card */
 .child-card {
   display: flex;

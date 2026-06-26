@@ -589,24 +589,24 @@ function renderEvents(data) {
 }
 
 function renderExpenses(data) {
-  const sorted = [...data.expenses].sort((a, b) => b.date.localeCompare(a.date));
-  const pending = sorted.filter(e => !e.paid);
-  const paid = sorted.filter(e => e.paid);
+  const summary = calculateExpenseSummary(data);
+  const { parentA, parentB, settlement, rows } = summary;
+  const pending = rows.filter(e => !e.paid);
   const totalPending = pending.reduce((s, e) => s + e.amount, 0);
 
   return `
     <div class="grid grid-3" style="margin-bottom:1.25rem">
       <div class="stat-card">
         <div class="stat-value" style="font-size:1.4rem">${formatCurrency(totalPending)}</div>
-        <div class="stat-label">סה"כ ממתין</div>
+        <div class="stat-label">סה"כ ממתין לסגירה</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">${pending.length}</div>
-        <div class="stat-label">הוצאות פתוחות</div>
+        <div class="stat-value" style="font-size:1.4rem">${formatCurrency(summary.total)}</div>
+        <div class="stat-label">סה"כ הוצאות</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">${paid.length}</div>
-        <div class="stat-label">הוצאות ששולמו</div>
+        <div class="stat-value">${rows.length}</div>
+        <div class="stat-label">מספר הוצאות</div>
       </div>
     </div>
 
@@ -615,36 +615,126 @@ function renderExpenses(data) {
       <button class="btn btn-primary" data-action="add-expense">+ הוסף הוצאה</button>
     </div>
 
-    ${sorted.length === 0 ? `
+    ${rows.length === 0 ? `
       <div class="card">${renderEmptyState('💰', 'אין הוצאות', 'עקוב/י אחר הוצאות משותפות על הילדים', 'הוסף הוצאה', 'add-expense')}</div>
     ` : `
+      ${renderExpenseSettlement(summary)}
+
+      <div class="card expense-summary-card">
+        <div class="card-header">
+          <div class="card-title">סיכום חשבון בין ההורים</div>
+        </div>
+        <div class="expense-summary-grid">
+          <div class="expense-summary-col expense-summary-a">
+            <div class="expense-summary-parent">${parentA.name}</div>
+            <div class="expense-summary-row"><span>שילם בפועל</span><strong>${formatCurrency(parentA.paid)}</strong></div>
+            <div class="expense-summary-row"><span>חלקו לפי אחוזים</span><strong>${formatCurrency(parentA.shouldPay)}</strong></div>
+            <div class="expense-summary-row total ${parentA.balance >= 0 ? 'positive' : 'negative'}">
+              <span>${parentA.balance >= 0 ? 'שילם יותר מדי' : 'שילם פחות מדי'}</span>
+              <strong>${formatCurrency(Math.abs(parentA.balance))}</strong>
+            </div>
+          </div>
+          <div class="expense-summary-col expense-summary-b">
+            <div class="expense-summary-parent">${parentB.name}</div>
+            <div class="expense-summary-row"><span>שילם בפועל</span><strong>${formatCurrency(parentB.paid)}</strong></div>
+            <div class="expense-summary-row"><span>חלקו לפי אחוזים</span><strong>${formatCurrency(parentB.shouldPay)}</strong></div>
+            <div class="expense-summary-row total ${parentB.balance >= 0 ? 'positive' : 'negative'}">
+              <span>${parentB.balance >= 0 ? 'שילם יותר מדי' : 'שילם פחות מדי'}</span>
+              <strong>${formatCurrency(Math.abs(parentB.balance))}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
-        <ul class="list">
-          ${sorted.map(e => `
-            <li class="list-item">
-              <div class="list-item-content">
-                <div class="list-item-title">${e.title}</div>
-                <div class="list-item-meta">
-                  ${formatDate(e.date)} · שולם ע"י ${getParentName(data, e.paidBy)}
-                  · ${getParentName(data, 'a')} ${e.splitPercent}% / ${getParentName(data, 'b')} ${100 - e.splitPercent}%
-                  ${e.category ? ' · ' + e.category : ''}
-                  ${e.childId ? ' · ' + getChildName(data, e.childId) : ''}
-                </div>
-              </div>
-              <div style="text-align:left">
-                <div class="expense-amount">${formatCurrency(e.amount)}</div>
-                <span class="badge ${e.paid ? 'badge-success' : 'badge-warning'}">${e.paid ? 'שולם' : 'ממתין'}</span>
-              </div>
-              <div class="list-item-actions">
-                ${!e.paid ? `<button class="btn btn-sm btn-primary" data-action="mark-paid" data-id="${e.id}">סומן כשולם</button>` : ''}
-                <button class="btn btn-sm btn-secondary" data-action="edit-expense" data-id="${e.id}">ערוך</button>
-                <button class="btn btn-sm btn-danger" data-action="delete-expense" data-id="${e.id}">מחק</button>
-              </div>
-            </li>
-          `).join('')}
-        </ul>
+        <div class="card-header">
+          <div class="card-title">טבלת הוצאות</div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table expense-table">
+            <thead>
+              <tr>
+                <th>תיאור</th>
+                <th>תאריך</th>
+                <th>סכום</th>
+                <th>שולם ע"י</th>
+                <th>חלק ${parentA.name}</th>
+                <th>חלק ${parentB.name}</th>
+                <th>חלוקה</th>
+                <th>סטטוס</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(e => `
+                <tr class="${e.paid ? 'row-paid' : 'row-pending'}">
+                  <td data-label="תיאור">
+                    <div class="expense-table-title">${e.title}</div>
+                    ${e.category || e.childId ? `<div class="expense-table-meta">${[e.category, e.childId ? getChildName(data, e.childId) : ''].filter(Boolean).join(' · ')}</div>` : ''}
+                  </td>
+                  <td data-label="תאריך">${formatDate(e.date)}</td>
+                  <td data-label="סכום" class="expense-amount">${formatCurrency(e.amount)}</td>
+                  <td data-label="שולם ע"י"><span class="badge badge-${e.paidBy}">${e.paidByName}</span></td>
+                  <td data-label="חלק ${parentA.name}" class="expense-share-a">${formatCurrency(e.shareA)}</td>
+                  <td data-label="חלק ${parentB.name}" class="expense-share-b">${formatCurrency(e.shareB)}</td>
+                  <td data-label="חלוקה">${e.splitPercent}% / ${100 - e.splitPercent}%</td>
+                  <td data-label="סטטוס"><span class="badge ${e.paid ? 'badge-success' : 'badge-warning'}">${e.paid ? 'שולם' : 'ממתין'}</span></td>
+                  <td data-label="פעולות" class="expense-table-actions">
+                    ${!e.paid ? `<button class="btn btn-sm btn-primary" data-action="mark-paid" data-id="${e.id}">שולם</button>` : ''}
+                    <button class="btn btn-sm btn-secondary" data-action="edit-expense" data-id="${e.id}">ערוך</button>
+                    <button class="btn btn-sm btn-danger" data-action="delete-expense" data-id="${e.id}">מחק</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot>
+              <tr class="expense-totals-row">
+                <td colspan="2"><strong>סה"כ</strong></td>
+                <td class="expense-amount"><strong>${formatCurrency(summary.total)}</strong></td>
+                <td></td>
+                <td class="expense-share-a"><strong>${formatCurrency(parentA.shouldPay)}</strong></td>
+                <td class="expense-share-b"><strong>${formatCurrency(parentB.shouldPay)}</strong></td>
+                <td colspan="3"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
     `}
+  `;
+}
+
+function renderExpenseSettlement(summary) {
+  const { settlement, parentA, parentB } = summary;
+
+  if (!settlement) {
+    return `
+      <div class="card expense-settlement expense-settlement-balanced">
+        <div class="expense-settlement-icon">✓</div>
+        <div>
+          <div class="expense-settlement-title">החשבון מאוזן</div>
+          <div class="expense-settlement-desc">שני ההורים שילמו בדיוק לפי החלוקה המוסכמת</div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card expense-settlement expense-settlement-owed">
+      <div class="expense-settlement-icon">💸</div>
+      <div>
+        <div class="expense-settlement-title">
+          <span class="badge badge-${settlement.from}">${settlement.fromName}</span>
+          חייב/ת ל
+          <span class="badge badge-${settlement.to}">${settlement.toName}</span>
+        </div>
+        <div class="expense-settlement-amount">${formatCurrency(settlement.amount)}</div>
+        <div class="expense-settlement-desc">
+          לפי חישוב: ${parentA.name} שילם/ה ${formatCurrency(parentA.paid)} (חלקו ${formatCurrency(parentA.shouldPay)})
+          · ${parentB.name} שילם/ה ${formatCurrency(parentB.paid)} (חלקו ${formatCurrency(parentB.shouldPay)})
+        </div>
+      </div>
+    </div>
   `;
 }
 
