@@ -719,41 +719,70 @@ body {
   padding: 0;
 }
 
-.cal-day.cal-visit-day .cal-day-content {
-  padding: 0.35rem;
-}
-
-.cal-day.cal-visit-day::before,
-.cal-day.cal-visit-day::after {
-  content: '';
+.cal-split-bg {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 50%;
+  inset: 0;
   z-index: 0;
+  display: flex;
+  flex-direction: row;
+  pointer-events: none;
 }
 
-.cal-day.cal-visit-day::before { right: 0; }
-.cal-day.cal-visit-day::after {
-  left: 0;
+.cal-split-visit,
+.cal-split-base {
+  flex: 1;
+}
+
+.cal-day.cal-base-a .cal-split-base { background: var(--parent-a-bg); }
+.cal-day.cal-base-b .cal-split-base { background: var(--parent-b-bg); }
+.cal-day.cal-visit-parent-a .cal-split-visit {
+  background-color: var(--parent-a-solid);
+  opacity: 0.88;
   background-image: repeating-linear-gradient(
     -45deg,
     transparent,
     transparent 3px,
-    rgba(255, 255, 255, 0.35) 3px,
-    rgba(255, 255, 255, 0.35) 6px
+    rgba(255, 255, 255, 0.3) 3px,
+    rgba(255, 255, 255, 0.3) 6px
   );
 }
 
-.cal-day.cal-base-a::before { background: var(--parent-a-bg); }
-.cal-day.cal-base-b::before { background: var(--parent-b-bg); }
-.cal-day.cal-visit-parent-a::after { background: var(--parent-a-solid); opacity: 0.82; }
-.cal-day.cal-visit-parent-b::after { background: var(--parent-b-solid); opacity: 0.82; }
+.cal-day.cal-visit-parent-b .cal-split-visit {
+  background-color: var(--parent-b-solid);
+  opacity: 0.88;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.3) 3px,
+    rgba(255, 255, 255, 0.3) 6px
+  );
+}
+
+.cal-day.cal-visit-day .cal-day-content {
+  padding: 0.35rem;
+}
 
 .cal-day.cal-base-a.cal-visit-parent-b { border-color: var(--parent-b-border); }
 .cal-day.cal-base-b.cal-visit-parent-a { border-color: var(--parent-a-border); }
 .cal-day.cal-base-a.cal-visit-parent-a { border-color: var(--parent-a-border); }
 .cal-day.cal-base-b.cal-visit-parent-b { border-color: var(--parent-b-border); }
+
+.cal-return-time {
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 3px;
+  padding: 0.08rem 0.2rem;
+  margin-bottom: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  align-self: flex-start;
+  max-width: 100%;
+}
 
 .cal-visit-time {
   font-size: 0.58rem;
@@ -2225,6 +2254,7 @@ body {
     padding: 0.1rem 0.25rem;
   }
   .cal-visit-time { font-size: 0.5rem; }
+  .cal-return-time { font-size: 0.5rem; }
   .cal-holiday-bar { font-size: 0.55rem; padding: 0.08rem 0.2rem; }
   .cal-event-dot { display: none; }
   .cal-day.has-events .cal-day-num::after {

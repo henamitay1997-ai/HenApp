@@ -172,18 +172,34 @@ function renderCalDay(num, dateStr, data, otherMonth, options = {}) {
   const holidays = typeof getHolidaysForDate === 'function' ? getHolidaysForDate(dateStr) : [];
   const custodyClass = display.mode === 'visit'
     ? `cal-visit-day cal-base-${display.baseParent} cal-visit-parent-${display.visitParent}`
-    : `custody-${display.parent}`;
+    : `custody-${display.parent}${display.mode === 'return' ? ' cal-return-day' : ''}`;
+  const parentName = getParentName(data, display.parent);
   const baseName = getParentName(data, display.baseParent || display.parent);
   const visitName = getParentName(data, display.visitParent || display.parent);
   const title = display.mode === 'visit'
     ? `לינה: ${baseName} · ביקור: ${visitName} (${formatCustodyTimeLabel(display.dayInfo)})`
-    : `${getParentName(data, display.parent)} · משמורת עם לינה`;
-  const visitTimeLabel = display.dayInfo.pickup && display.dayInfo.returnTime
-    ? `${display.dayInfo.pickup}–${display.dayInfo.returnTime}`
-    : formatCustodyTimeLabel(display.dayInfo);
-  const visitTimeHtml = display.mode === 'visit'
-    ? `<div class="cal-visit-time" title="${formatCustodyTimeLabel(display.dayInfo)}">${visitTimeLabel}</div>`
+    : display.mode === 'return'
+      ? `${parentName} · ${formatCustodyTimeLabel(display.dayInfo, 'return')}`
+      : `${parentName} · משמורת עם לינה`;
+
+  let timeHtml = '';
+  if (display.mode === 'return') {
+    const ret = display.dayInfo.returnTime || display.dayInfo.return;
+    if (ret) {
+      timeHtml = `<div class="cal-return-time" title="${formatCustodyTimeLabel(display.dayInfo, 'return')}">החזרה ${ret}</div>`;
+    }
+  } else if (display.mode === 'visit') {
+    const visitTimeLabel = display.dayInfo.pickup && display.dayInfo.returnTime
+      ? `${display.dayInfo.pickup}–${display.dayInfo.returnTime}`
+      : formatCustodyTimeLabel(display.dayInfo);
+    timeHtml = `<div class="cal-visit-time" title="${formatCustodyTimeLabel(display.dayInfo)}">${visitTimeLabel}</div>`;
+  }
+
+  const splitBgHtml = display.mode === 'visit'
+    ? `<div class="cal-split-bg" aria-hidden="true"><span class="cal-split-base"></span><span class="cal-split-visit"></span></div>`
     : '';
+
+  const printStyle = options.print ? getCalDayPrintStyle(display) : '';
   const holidayHtml = holidays.map(h => `
     <div class="cal-holiday-bar ${getHolidayBarClass(h)}" title="${h.name}">${h.name}</div>
   `).join('');
@@ -194,16 +210,34 @@ function renderCalDay(num, dateStr, data, otherMonth, options = {}) {
 
   return `
     <div class="cal-day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${custodyClass}${events.length ? ' has-events' : ''}${holidays.length ? ' has-holiday' : ''}"
-         ${options.print ? '' : `data-date="${dateStr}"`} title="${title}${holidays.length ? ' · ' + holidays.map(h => h.name).join(', ') : ''}">
+         ${options.print ? '' : `data-date="${dateStr}"`} title="${title}${holidays.length ? ' · ' + holidays.map(h => h.name).join(', ') : ''}"${printStyle ? ` style="${printStyle}"` : ''}>
+      ${splitBgHtml}
       ${isToday ? '<span class="cal-today-badge" aria-hidden="true">היום</span>' : ''}
       <div class="cal-day-content">
         <div class="cal-day-num">${num}</div>
-        ${visitTimeHtml}
+        ${timeHtml}
         ${holidayHtml}
         ${eventsHtml}
       </div>
     </div>
   `;
+}
+
+function getCalDayPrintStyle(display) {
+  const colors = {
+    a: { bg: '#bfdbfe', border: '#2563eb', solid: '#2563eb' },
+    b: { bg: '#fed7aa', border: '#ea580c', solid: '#ea580c' }
+  };
+  if (display.mode === 'overnight' || display.mode === 'return') {
+    const c = colors[display.parent];
+    return `background:${c.bg};border:2px solid ${c.border};`;
+  }
+  if (display.mode === 'visit') {
+    const base = colors[display.baseParent];
+    const visit = colors[display.visitParent];
+    return `background:linear-gradient(to left, ${visit.solid} 50%, ${base.bg} 50%);border:2px solid ${visit.border};`;
+  }
+  return '';
 }
 
 function renderCalendarPrintSheet(data, year, month) {
@@ -242,6 +276,7 @@ function renderCalendarPrintSheet(data, year, month) {
           <span><span class="print-swatch custody-a"></span> ${getParentName(data, 'a')} — לינה</span>
           <span><span class="print-swatch custody-b"></span> ${getParentName(data, 'b')} — לינה</span>
           <span><span class="cal-legend-split-demo cal-base-a cal-visit-parent-b"></span> ביקור ללא לינה (חצי-חצי)</span>
+          <span>החזרה הביתה = סוף רצף סופ״ש</span>
           <span><span class="cal-holiday-bar major">חג</span> חגים בישראל</span>
         </div>
       </div>
@@ -435,21 +470,24 @@ function renderVisitHoursEditor(data, parentA, parentB) {
   `;
 }
 
-function renderDayVisitControls(scope, key, detail) {
+function renderDayVisitControls(scope, key, detail, options = {}) {
   const d = normalizeDayDetail(detail);
+  const isReturnDay = !!options.isBlockReturnDay;
   return `
     <div class="day-visit-controls" data-visit-scope="${scope}" data-visit-key="${key}">
       <label class="visit-overnight-label">
         <input type="checkbox" data-visit-overnight="${scope}" data-visit-key="${key}" ${d.overnight ? 'checked' : ''}>
-        <span>משמורת עם לינה</span>
+        <span>${isReturnDay ? 'לינה עד מוצאי היום (סוף הרצף)' : 'משמורת עם לינה'}</span>
       </label>
+      ${isReturnDay && !d.overnight ? '<p class="form-hint" style="margin:0 0 0.5rem">הילדים אצל ההורה מהיום הקודם — רק שעת החזרה הביתה בסוף</p>' : ''}
       <div class="visit-times-row ${d.overnight ? 'is-hidden' : ''}" data-visit-times-for="${scope}" data-visit-key="${key}">
+        ${isReturnDay ? '' : `
         <label class="visit-time-field">
           <span>שעת איסוף</span>
           <input type="time" class="form-input" data-visit-pickup="${scope}" data-visit-key="${key}" value="${d.pickup || ''}">
-        </label>
+        </label>`}
         <label class="visit-time-field">
-          <span>שעת החזרה</span>
+          <span>${isReturnDay ? 'שעת החזרה הביתה' : 'שעת החזרה'}</span>
           <input type="time" class="form-input" data-visit-return="${scope}" data-visit-key="${key}" value="${d.returnTime || d.return || ''}">
         </label>
       </div>
@@ -699,15 +737,17 @@ function renderWeekendCycleEditor(data, parentA, parentB) {
         <p class="form-hint">למשל: סמנו חמישי, שישי ושבת</p>
       </div>
       <h3 class="biweekly-week-title" style="margin-top:1rem">סוג משמורת לכל יום (בשבועות הפעילים)</h3>
+      <p class="custody-intro">בימים האמצעיים (חמישי–שישי) — לינה. ביום האחרון (שבת) — בטלי לינה והזיני רק שעת החזרה הביתה.</p>
       <ul class="custody-day-list">
         ${weekendDays.sort((a, b) => a - b).map(day => {
           const detail = normalizeDayDetail((wc.dayDetails || {})[day] ?? (wc.dayDetails || {})[String(day)]);
+          const lastDay = [...weekendDays].sort((a, b) => a - b).pop();
           return `
             <li class="custody-day-row custody-day-expanded">
               <div class="custody-day-main">
                 <div class="custody-day-label"><span class="custody-day-name">יום ${DAY_NAMES[day]}</span></div>
               </div>
-              ${renderDayVisitControls('weekend', day, detail)}
+              ${renderDayVisitControls('weekend', day, detail, { isBlockReturnDay: day === lastDay })}
             </li>
           `;
         }).join('') || '<li class="custody-intro">סמנו לפחות יום אחד למעלה</li>'}
@@ -928,6 +968,7 @@ function getWeekPreview(data, days = 7, startOffset = 0) {
     d.setDate(start.getDate() + i);
     const dateStr = d.toISOString().split('T')[0];
     const dayInfo = getCustodyDayInfo(data, dateStr);
+    const display = getCalendarDayDisplay(data, dateStr);
     const isManual = data.settings.custodyPattern === 'manual' && data.settings.manualDates?.[dateStr];
     const biweeklyWeek = data.settings.custodyPattern === 'biweekly'
       ? getBiweeklyWeekIndex(dateStr, data.settings.custodyStartDate)
@@ -938,7 +979,9 @@ function getWeekPreview(data, days = 7, startOffset = 0) {
       && isFollowUpVisitDate(dateStr, data.settings.weekendCycle);
     const isFlexVisit = data.settings.custodyPattern === 'weekend-cycle'
       && getFlexVisitForDate(dateStr, data.settings.weekendCycle?.flexVisits);
-    const visitLabel = !dayInfo.overnight ? formatCustodyTimeLabel(dayInfo) : '';
+    const visitLabel = display.mode === 'return'
+      ? formatCustodyTimeLabel(dayInfo, 'return')
+      : display.mode === 'visit' ? formatCustodyTimeLabel(dayInfo) : '';
     html += `
       <li class="custody-preview-row custody-parent-${dayInfo.parent} ${dateStr === todayStr ? 'is-today' : ''}">
         <span class="custody-preview-date">${formatDateShort(dateStr)}</span>
@@ -946,7 +989,8 @@ function getWeekPreview(data, days = 7, startOffset = 0) {
         ${isWeekendWeek ? '<span class="custody-cycle-tag">שבת פעילה</span>' : ''}
         ${isFollowUp ? '<span class="custody-cycle-tag">ביקור אחרי סופ״ש</span>' : ''}
         ${isFlexVisit ? '<span class="custody-cycle-tag">ביקור מיוחד</span>' : ''}
-        ${!dayInfo.overnight ? '<span class="custody-visit-tag">ללא לינה</span>' : ''}
+        ${display.mode === 'visit' ? '<span class="custody-visit-tag">ביקור ללא לינה</span>' : ''}
+        ${display.mode === 'return' ? '<span class="custody-visit-tag">החזרה הביתה</span>' : ''}
         <span class="badge badge-${dayInfo.parent}">${getParentName(data, dayInfo.parent)}</span>
         ${visitLabel ? `<span class="custody-time-tag">${visitLabel}</span>` : ''}
         ${isManual ? '<span class="custody-manual-tag">ידני</span>' : ''}
@@ -1512,10 +1556,13 @@ function initExpenseSplitPicker(form) {
 
 function getDayDetailHtml(data, dateStr) {
   const dayInfo = getCustodyDayInfo(data, dateStr);
+  const display = getCalendarDayDisplay(data, dateStr);
   const events = data.events.filter(e => e.date === dateStr);
-  const visitNote = !dayInfo.overnight
-    ? `<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">${formatCustodyTimeLabel(dayInfo)}</p>`
-    : '<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">משמורת עם לינה</p>';
+  const visitNote = display.mode === 'return'
+    ? `<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">${formatCustodyTimeLabel(dayInfo, 'return')}</p>`
+    : display.mode === 'visit'
+      ? `<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">${formatCustodyTimeLabel(dayInfo)}</p>`
+      : '<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">משמורת עם לינה</p>';
 
   return `
     <p style="margin-bottom:1rem"><strong>משמורת:</strong> <span class="badge badge-${dayInfo.parent}">${getParentName(data, dayInfo.parent)}</span>${visitNote}</p>

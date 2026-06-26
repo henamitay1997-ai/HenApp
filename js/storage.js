@@ -287,16 +287,45 @@ function getCustodyDayInfo(data, dateStr) {
   return { parent, ...detail };
 }
 
+function isWeekendCycleBlockDate(dateStr, weekendCycle) {
+  if (!weekendCycle?.startDate || !weekendCycle?.days?.length) return false;
+  if (!isWeekendCycleWeek(dateStr, weekendCycle)) return false;
+  const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+  return weekendCycle.days.includes(dayOfWeek);
+}
+
+function isFollowUpOrFlexVisit(dateStr, weekendCycle) {
+  return !!(getFlexVisitForDate(dateStr, weekendCycle?.flexVisits)
+    || getFollowUpVisitForDate(dateStr, weekendCycle));
+}
+
+function isWeekendCycleReturnDay(dateStr, weekendCycle, dayInfo) {
+  if (!isWeekendCycleBlockDate(dateStr, weekendCycle)) return false;
+  if (isFollowUpOrFlexVisit(dateStr, weekendCycle)) return false;
+  const sortedDays = [...weekendCycle.days].sort((a, b) => a - b);
+  const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+  const isLast = dayOfWeek === sortedDays[sortedDays.length - 1];
+  return isLast && dayInfo.overnight === false;
+}
+
 function getCalendarDayDisplay(data, dateStr) {
   const dayInfo = getCustodyDayInfo(data, dateStr);
-  const visitParent = dayInfo.parent;
+  const { custodyPattern, visitHours, weekendCycle } = data.settings;
 
-  if (dayInfo.overnight !== false) {
-    return { mode: 'overnight', parent: visitParent, dayInfo };
+  if (custodyPattern === 'weekend-cycle' && isWeekendCycleBlockDate(dateStr, weekendCycle)) {
+    if (!isFollowUpOrFlexVisit(dateStr, weekendCycle)) {
+      if (isWeekendCycleReturnDay(dateStr, weekendCycle, dayInfo)) {
+        return { mode: 'return', parent: weekendCycle.parent, dayInfo };
+      }
+      return { mode: 'overnight', parent: weekendCycle.parent, dayInfo };
+    }
   }
 
-  let baseParent = visitParent === 'a' ? 'b' : 'a';
-  const { custodyPattern, visitHours, weekendCycle } = data.settings;
+  if (dayInfo.overnight !== false) {
+    return { mode: 'overnight', parent: dayInfo.parent, dayInfo };
+  }
+
+  let baseParent = dayInfo.parent === 'a' ? 'b' : 'a';
 
   if (custodyPattern === 'visit-hours') {
     const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
@@ -304,25 +333,25 @@ function getCalendarDayDisplay(data, dateStr) {
     if (dayConfig?.active) {
       baseParent = visitHours?.baseParent || baseParent;
     }
-  } else if (custodyPattern === 'weekend-cycle') {
-    const hasVisitOverlay = getFlexVisitForDate(dateStr, weekendCycle?.flexVisits)
-      || getFollowUpVisitForDate(dateStr, weekendCycle);
-    if (hasVisitOverlay && weekendCycle?.offParent) {
-      baseParent = weekendCycle.offParent;
-    }
+  } else if (custodyPattern === 'weekend-cycle' && weekendCycle?.offParent) {
+    baseParent = weekendCycle.offParent;
   }
 
   return {
     mode: 'visit',
-    parent: visitParent,
+    parent: dayInfo.parent,
     baseParent,
-    visitParent,
+    visitParent: dayInfo.parent,
     dayInfo
   };
 }
 
-function formatCustodyTimeLabel(info) {
-  if (info.overnight) return 'משמורת עם לינה';
+function formatCustodyTimeLabel(info, displayMode) {
+  if (displayMode === 'return') {
+    const ret = info.returnTime || info.return || '?';
+    return `החזרה הביתה ${ret}`;
+  }
+  if (info.overnight !== false) return 'משמורת עם לינה';
   const pickup = info.pickup || '?';
   const ret = info.returnTime || info.return || '?';
   return `ביקור ${pickup}–${ret}`;

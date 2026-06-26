@@ -140,7 +140,7 @@ function getCalendarPrintHtml() {
   <meta charset="UTF-8">
   <title>לוח משמורת</title>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="${base}css/styles.css?v=9">
+  <link rel="stylesheet" href="${base}css/styles.css?v=10">
   <style>
     body { margin: 0; padding: 16px; font-family: Heebo, sans-serif; background: #fff; }
     @page { size: A4 landscape; margin: 12mm; }
@@ -177,13 +177,22 @@ async function downloadCalendarPdf() {
   }
 
   const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
-  const container = document.createElement('div');
-  container.innerHTML = renderCalendarPrintSheet(appData, calYear, calMonth);
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
-  container.style.top = '0';
-  container.style.width = '1100px';
-  document.body.appendChild(container);
+  const sheet = document.createElement('div');
+  sheet.innerHTML = renderCalendarPrintSheet(appData, calYear, calMonth);
+  sheet.style.position = 'fixed';
+  sheet.style.left = '-9999px';
+  sheet.style.top = '0';
+  sheet.style.width = '1100px';
+  sheet.style.background = '#fff';
+  document.body.appendChild(sheet);
+
+  const printEl = sheet.firstElementChild;
+  printEl.querySelectorAll('.cal-day').forEach(cell => {
+    if (!cell.style.background && !cell.getAttribute('style')) {
+      cell.style.background = '#fff';
+      cell.style.border = '1px solid #ccc';
+    }
+  });
 
   try {
     showLoading(true);
@@ -191,15 +200,15 @@ async function downloadCalendarPdf() {
       margin: [8, 8, 8, 8],
       filename: `לוח-משמורת-${monthNames[calMonth]}-${calYear}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    }).from(container.firstElementChild).save();
+    }).from(printEl).save();
     showToast('הקובץ נשמר', 'success');
   } catch (err) {
     console.error(err);
     showToast('שגיאה ביצירת PDF — נסי הדפסה ובחרי "שמור כ-PDF"');
   } finally {
-    document.body.removeChild(container);
+    document.body.removeChild(sheet);
     showLoading(false);
   }
 }
