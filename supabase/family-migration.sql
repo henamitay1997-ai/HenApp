@@ -195,6 +195,12 @@ begin
   from public.family_members where user_id = auth.uid() limit 1;
 
   if v_family_id is not null then
+    -- ודא הגדרות + תיקון נתונים יתומים
+    insert into public.family_settings (family_id) values (v_family_id) on conflict do nothing;
+    update public.children set family_id = v_family_id where user_id = auth.uid() and family_id is null;
+    update public.events set family_id = v_family_id where user_id = auth.uid() and family_id is null;
+    update public.expenses set family_id = v_family_id where user_id = auth.uid() and family_id is null;
+    update public.messages set family_id = v_family_id where user_id = auth.uid() and family_id is null;
     return v_family_id;
   end if;
 

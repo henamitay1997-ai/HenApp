@@ -39,7 +39,7 @@ async function refreshData() {
 
 async function handleDbError(err, fallbackMsg = 'שגיאה בשמירה') {
   console.error(err);
-  showToast(err?.message || fallbackMsg);
+  showToast(translateDbError(err) || fallbackMsg);
 }
 
 function closeSidebar() {
@@ -589,8 +589,12 @@ async function onUserLoggedIn(user) {
 
     await refreshData();
   } catch (err) {
-    handleDbError(err, 'שגיאה בטעינת נתונים');
-    appData = structuredClone(DEFAULT_DATA);
+    handleDbError(err, 'שגיאה בטעינת נתונים — ודא/י שהרצת fix-data.sql ב-Supabase');
+    try {
+      await refreshData();
+    } catch {
+      appData = structuredClone(DEFAULT_DATA);
+    }
   } finally {
     showLoading(false);
   }
