@@ -12,6 +12,10 @@ python -m http.server 8080
 # גלש/י ל-http://localhost:8080
 ```
 
+## הגדרת התחברות
+
+ראה **[SUPABASE_SETUP.md](SUPABASE_SETUP.md)** — הגדרת Supabase להרשמה והתחברות.
+
 ## העלאה לשרת
 
 ראה **[DEPLOY.md](DEPLOY.md)** — הדרכה מלאה ל-Netlify, Cloudflare, GitHub Pages ו-Vercel.
@@ -19,6 +23,8 @@ python -m http.server 8080
 **הדרך המהירה:** גרור/י את התיקייה ל-https://app.netlify.com/drop
 
 ## תכונות
+
+- **התחברות והרשמה** — חשבון משתמש אישי (Supabase Auth)
 
 - **לוח בקרה** — סקירה: משמורת היום, אירועים קרובים, הוצאות ממתינות
 - **לוח שנה** — תצוגה חודשית עם צבעי משמורת ואירועים

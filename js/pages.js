@@ -441,8 +441,12 @@ function renderMessages(data) {
 
 function renderSettings(data) {
   const { settings } = data;
+  const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  const accountCard = user ? renderAccountSettings(user) : '';
+
   return `
     <div class="grid grid-2">
+      ${accountCard}
       <div class="card">
         <div class="card-title" style="margin-bottom:1rem">פרטי הורים</div>
         <form id="settings-form">
@@ -471,7 +475,7 @@ function renderSettings(data) {
       <div class="card">
         <div class="card-title" style="margin-bottom:1rem">ניהול נתונים</div>
         <p style="font-size:0.9rem;color:var(--text-muted);margin-bottom:1rem">
-          כל הנתונים נשמרים בדפדפן שלך (localStorage). בעתיד ניתן יהיה לחבר שרת וסנכרון בין ההורים.
+          הנתונים נשמרים בחשבון שלך בדפדפן. בעתיד יתווסף סנכרון ענן בין שני ההורים.
         </p>
         <div style="display:flex;flex-direction:column;gap:0.5rem">
           <button class="btn btn-secondary" data-action="export-data">📥 ייצוא נתונים (JSON)</button>

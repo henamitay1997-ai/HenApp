@@ -1,4 +1,13 @@
 const STORAGE_KEY = 'coparent-app-data';
+let currentUserId = null;
+
+function setCurrentUser(userId) {
+  currentUserId = userId;
+}
+
+function getStorageKey() {
+  return currentUserId ? `${STORAGE_KEY}-${currentUserId}` : STORAGE_KEY;
+}
 
 const DEFAULT_DATA = {
   settings: {
@@ -23,7 +32,7 @@ function generateId() {
 
 function loadData() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(getStorageKey());
     if (!raw) return structuredClone(DEFAULT_DATA);
     const data = JSON.parse(raw);
     return { ...structuredClone(DEFAULT_DATA), ...data };
@@ -33,7 +42,7 @@ function loadData() {
 }
 
 function saveData(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(getStorageKey(), JSON.stringify(data));
 }
 
 function getParentName(data, parent) {

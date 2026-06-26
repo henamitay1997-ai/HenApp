@@ -12,6 +12,7 @@ const PAGE_TITLES = {
 let appData = loadData();
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
+let listenersReady = false;
 
 function navigate(page) {
   window.location.hash = page;
@@ -40,7 +41,12 @@ function render() {
 
   const content = document.getElementById('content');
   const topbarActions = document.getElementById('topbar-actions');
-  topbarActions.innerHTML = '';
+  let actionsHtml = '';
+
+  const user = getCurrentUser();
+  if (user) {
+    actionsHtml = `<span class="user-badge">${getUserDisplayName(user)}</span>`;
+  }
 
   switch (page) {
     case 'dashboard':
@@ -55,7 +61,7 @@ function render() {
     case 'children':
       content.innerHTML = renderChildren(appData);
       if (appData.children.length > 0) {
-        topbarActions.innerHTML = '<button class="btn btn-primary btn-sm" data-action="add-child">+ הוסף ילד</button>';
+        actionsHtml += '<button class="btn btn-primary btn-sm" data-action="add-child">+ הוסף ילד</button>';
       }
       break;
     case 'events':
@@ -72,6 +78,8 @@ function render() {
       content.innerHTML = renderSettings(appData);
       break;
   }
+
+  topbarActions.innerHTML = actionsHtml;
 
   closeSidebar();
 }
@@ -314,17 +322,23 @@ function handleContentClick(e) {
     case 'reset-data':
       confirmDelete('האם למחוק את כל הנתונים? פעולה זו בלתי הפיכה.').then(ok => {
         if (ok) {
-          localStorage.removeItem('coparent-app-data');
+          localStorage.removeItem(getStorageKey());
           appData = loadData();
           showToast('הנתונים נמחקו');
           render();
         }
       });
       break;
+    case 'logout':
+      signOut().then(() => showToast('התנתקת בהצלחה'));
+      break;
   }
 }
 
 function setupEventListeners() {
+  if (listenersReady) return;
+  listenersReady = true;
+
   window.addEventListener('hashchange', render);
 
   document.getElementById('main-nav').addEventListener('click', e => {
@@ -420,18 +434,49 @@ function setupEventListeners() {
   setupModalListeners();
 }
 
-function init() {
-  if (!window.location.hash) {
-    window.location.hash = 'dashboard';
+function onUserLoggedIn(user) {
+  setCurrentUser(user.id);
+  appData = loadData();
+
+  const seenKey = `coparent-seen-${user.id}`;
+  if (appData.children.length === 0 && !localStorage.getItem(seenKey)) {
+    localStorage.setItem(seenKey, '1');
   }
 
-  if (appData.children.length === 0 && !localStorage.getItem('coparent-app-seen')) {
-    appData = seedDemoData(appData);
-    localStorage.setItem('coparent-app-seen', '1');
+  hideAuthGate();
+  updateUserUI(user);
+
+  if (!window.location.hash) {
+    window.location.hash = 'dashboard';
   }
 
   setupEventListeners();
   render();
 }
 
-init();
+function onUserLoggedOut() {
+  setCurrentUser(null);
+  appData = loadData();
+  showAuthGate('login');
+}
+
+async function bootstrap() {
+  if (!initAuth()) {
+    showAuthGate('not-configured');
+    return;
+  }
+
+  watchAuthState();
+  onAuthChange(user => {
+    if (user) onUserLoggedIn(user);
+    else onUserLoggedOut();
+  });
+
+  showAuthGate('login');
+  const session = await getSession();
+  if (session?.user) {
+    onUserLoggedIn(session.user);
+  }
+}
+
+bootstrap();
