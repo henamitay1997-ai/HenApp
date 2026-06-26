@@ -1480,6 +1480,13 @@ body {
 
 .section-header h2 { font-size: 1.1rem; font-weight: 700; }
 
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {
@@ -1528,7 +1535,8 @@ body {
   .cal-day-name { font-size: 0.68rem; padding: 0.25rem 0; }
   .child-card { flex-wrap: wrap; }
   .child-card .list-item-actions { margin-top: 0.5rem; }
-  .section-header .btn { width: 100%; justify-content: center; }
+  .section-header-actions { width: 100%; }
+  .section-header-actions .btn { flex: 1; justify-content: center; }
   .expense-amount { font-size: 1rem; }
   .empty-state { padding: 2rem 1rem; }
   .nav-link { padding: 0.85rem 1rem; min-height: 48px; }

@@ -612,7 +612,10 @@ function renderExpenses(data) {
 
     <div class="section-header">
       <h2>הוצאות משותפות</h2>
-      <button class="btn btn-primary" data-action="add-expense">+ הוסף הוצאה</button>
+      <div class="section-header-actions">
+        ${rows.length > 0 ? `<button type="button" class="btn btn-secondary" data-action="download-expense-pdf">📄 הורד דוח PDF</button>` : ''}
+        <button class="btn btn-primary" data-action="add-expense">+ הוסף הוצאה</button>
+      </div>
     </div>
 
     ${rows.length === 0 ? `

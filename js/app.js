@@ -361,6 +361,9 @@ function handleContentClick(e) {
         }
       })();
       break;
+    case 'download-expense-pdf':
+      downloadExpenseReportPdf(appData);
+      break;
     case 'export-data': {
       const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
