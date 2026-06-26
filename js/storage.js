@@ -1,14 +1,3 @@
-const STORAGE_KEY = 'coparent-app-data';
-let currentUserId = null;
-
-function setCurrentUser(userId) {
-  currentUserId = userId;
-}
-
-function getStorageKey() {
-  return currentUserId ? `${STORAGE_KEY}-${currentUserId}` : STORAGE_KEY;
-}
-
 const DEFAULT_DATA = {
   settings: {
     parentAName: 'הורה א',
@@ -25,25 +14,6 @@ const DEFAULT_DATA = {
   expenses: [],
   messages: []
 };
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-function loadData() {
-  try {
-    const raw = localStorage.getItem(getStorageKey());
-    if (!raw) return structuredClone(DEFAULT_DATA);
-    const data = JSON.parse(raw);
-    return { ...structuredClone(DEFAULT_DATA), ...data };
-  } catch {
-    return structuredClone(DEFAULT_DATA);
-  }
-}
-
-function saveData(data) {
-  localStorage.setItem(getStorageKey(), JSON.stringify(data));
-}
 
 function getParentName(data, parent) {
   return parent === 'a' ? data.settings.parentAName : data.settings.parentBName;
@@ -129,36 +99,4 @@ function getUpcomingEvents(data, days = 7) {
 
 function getPendingExpenses(data) {
   return data.expenses.filter(e => !e.paid);
-}
-
-function seedDemoData(data) {
-  if (data.children.length > 0) return data;
-
-  const child1 = { id: generateId(), name: 'נועה', birthDate: '2016-03-15', school: 'בית ספר יסודי אילנות', allergies: 'אגוזים', notes: '' };
-  const child2 = { id: generateId(), name: 'איתי', birthDate: '2019-07-22', school: 'גן חובה שקד', allergies: '', notes: '' };
-
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const nextWeek = new Date(today);
-  nextWeek.setDate(nextWeek.getDate() + 5);
-
-  data.settings.parentAName = 'דנה';
-  data.settings.parentBName = 'יוסי';
-  data.children = [child1, child2];
-  data.events = [
-    { id: generateId(), title: 'רופא משפחה — נועה', date: tomorrow.toISOString().split('T')[0], time: '16:30', childId: child1.id, location: 'קופ"ח כללית', notes: 'בדיקה שנתית', createdBy: 'a' },
-    { id: generateId(), title: 'אספת הורים בבית הספר', date: nextWeek.toISOString().split('T')[0], time: '09:00', childId: child1.id, location: 'בית ספר יסודי', notes: '', createdBy: 'b' }
-  ];
-  data.expenses = [
-    { id: generateId(), title: 'חוג שחייה — נועה', amount: 450, date: today.toISOString().split('T')[0], childId: child1.id, paidBy: 'a', splitPercent: 50, paid: false, category: 'חוגים', notes: '' },
-    { id: generateId(), title: 'תשלום גן — איתי', amount: 2800, date: today.toISOString().split('T')[0], childId: child2.id, paidBy: 'b', splitPercent: 50, paid: true, category: 'חינוך', notes: 'תשלום רבעוני' }
-  ];
-  data.messages = [
-    { id: generateId(), text: 'היי, מחר יש לנועה רופא ב-16:30. תוכל/י לקחת?', sender: 'a', timestamp: new Date(Date.now() - 86400000).toISOString() },
-    { id: generateId(), text: 'בטח, אקח אותה. תשלח/י לי את הכתובת?', sender: 'b', timestamp: new Date(Date.now() - 82800000).toISOString() }
-  ];
-
-  saveData(data);
-  return data;
 }

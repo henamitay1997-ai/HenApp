@@ -9,13 +9,23 @@ const PAGE_TITLES = {
   settings: 'הגדרות'
 };
 
-let appData = loadData();
+let appData = structuredClone(DEFAULT_DATA);
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 let listenersReady = false;
+let loadedUserId = null;
 
-function navigate(page) {
-  window.location.hash = page;
+function showLoading(show) {
+  document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+}
+
+async function refreshData() {
+  appData = await loadAppData();
+}
+
+async function handleDbError(err, fallbackMsg = 'שגיאה בשמירה') {
+  console.error(err);
+  showToast(err?.message || fallbackMsg);
 }
 
 function closeSidebar() {
@@ -40,7 +50,6 @@ function render() {
   syncNavActive(page);
 
   const content = document.getElementById('content');
-  const topbarActions = document.getElementById('topbar-actions');
   let actionsHtml = '';
 
   const user = getCurrentUser();
@@ -79,8 +88,7 @@ function render() {
       break;
   }
 
-  topbarActions.innerHTML = actionsHtml;
-
+  document.getElementById('topbar-actions').innerHTML = actionsHtml;
   closeSidebar();
 }
 
@@ -92,9 +100,7 @@ function scrollMessagesToBottom() {
 function getFormData(form) {
   const fd = new FormData(form);
   const obj = {};
-  for (const [key, val] of fd.entries()) {
-    obj[key] = val;
-  }
+  for (const [key, val] of fd.entries()) obj[key] = val;
   return obj;
 }
 
@@ -110,19 +116,23 @@ function handleChildForm(child = null) {
   const form = document.getElementById('child-form');
   if (!form) return;
 
-  document.getElementById('modal-save')?.addEventListener('click', () => {
+  document.getElementById('modal-save')?.addEventListener('click', async () => {
     const data = getFormData(form);
     if (!data.name.trim()) { showToast('יש להזין שם'); return; }
 
-    if (isEdit) {
-      Object.assign(child, data);
-    } else {
-      appData.children.push({ id: generateId(), ...data });
+    try {
+      showLoading(true);
+      if (isEdit) await updateChild(child.id, data);
+      else await createChild(data);
+      await refreshData();
+      closeModal();
+      showToast(isEdit ? 'הילד/ה עודכן/ה' : 'ילד/ה נוסף/ה', 'success');
+      render();
+    } catch (err) {
+      handleDbError(err);
+    } finally {
+      showLoading(false);
     }
-    saveData(appData);
-    closeModal();
-    showToast(isEdit ? 'הילד/ה עודכן/ה' : 'ילד/ה נוסף/ה', 'success');
-    render();
   });
   document.getElementById('modal-cancel')?.addEventListener('click', () => closeModal());
 }
@@ -141,7 +151,7 @@ function handleEventForm(event = null, defaultDate = null) {
   const form = document.getElementById('event-form');
   if (!form) return;
 
-  document.getElementById('modal-save')?.addEventListener('click', () => {
+  document.getElementById('modal-save')?.addEventListener('click', async () => {
     const data = getFormData(form);
     if (!data.title.trim() || !data.date) { showToast('יש למלא כותרת ותאריך'); return; }
 
@@ -151,15 +161,19 @@ function handleEventForm(event = null, defaultDate = null) {
       createdBy: isEdit ? event.createdBy : appData.settings.currentParent
     };
 
-    if (isEdit) {
-      Object.assign(event, payload);
-    } else {
-      appData.events.push({ id: generateId(), ...payload });
+    try {
+      showLoading(true);
+      if (isEdit) await updateEvent(event.id, payload);
+      else await createEvent(payload);
+      await refreshData();
+      closeModal();
+      showToast(isEdit ? 'האירוע עודכן' : 'אירוע נוסף', 'success');
+      render();
+    } catch (err) {
+      handleDbError(err);
+    } finally {
+      showLoading(false);
     }
-    saveData(appData);
-    closeModal();
-    showToast(isEdit ? 'האירוע עודכן' : 'אירוע נוסף', 'success');
-    render();
   });
   document.getElementById('modal-cancel')?.addEventListener('click', () => closeModal());
 }
@@ -177,7 +191,7 @@ function handleExpenseForm(expense = null) {
   const form = document.getElementById('expense-form');
   if (!form) return;
 
-  document.getElementById('modal-save')?.addEventListener('click', () => {
+  document.getElementById('modal-save')?.addEventListener('click', async () => {
     const data = getFormData(form);
     const paidCheckbox = form.querySelector('[name=paid]');
 
@@ -189,15 +203,19 @@ function handleExpenseForm(expense = null) {
       childId: data.childId || null
     };
 
-    if (isEdit) {
-      Object.assign(expense, payload);
-    } else {
-      appData.expenses.push({ id: generateId(), ...payload });
+    try {
+      showLoading(true);
+      if (isEdit) await updateExpense(expense.id, payload);
+      else await createExpense(payload);
+      await refreshData();
+      closeModal();
+      showToast(isEdit ? 'ההוצאה עודכנה' : 'הוצאה נוספה', 'success');
+      render();
+    } catch (err) {
+      handleDbError(err);
+    } finally {
+      showLoading(false);
     }
-    saveData(appData);
-    closeModal();
-    showToast(isEdit ? 'ההוצאה עודכנה' : 'הוצאה נוספה', 'success');
-    render();
   });
   document.getElementById('modal-cancel')?.addEventListener('click', () => closeModal());
 }
@@ -227,12 +245,18 @@ function handleContentClick(e) {
       break;
     }
     case 'delete-child':
-      confirmDelete('האם למחוק את הילד/ה?').then(ok => {
-        if (ok) {
-          appData.children = appData.children.filter(c => c.id !== id);
-          saveData(appData);
+      confirmDelete('האם למחוק את הילד/ה?').then(async ok => {
+        if (!ok) return;
+        try {
+          showLoading(true);
+          await deleteChild(id);
+          await refreshData();
           showToast('נמחק', 'success');
           render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
         }
       });
       break;
@@ -245,12 +269,18 @@ function handleContentClick(e) {
       break;
     }
     case 'delete-event':
-      confirmDelete('האם למחוק את האירוע?').then(ok => {
-        if (ok) {
-          appData.events = appData.events.filter(ev => ev.id !== id);
-          saveData(appData);
+      confirmDelete('האם למחוק את האירוע?').then(async ok => {
+        if (!ok) return;
+        try {
+          showLoading(true);
+          await deleteEvent(id);
+          await refreshData();
           showToast('נמחק', 'success');
           render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
         }
       });
       break;
@@ -263,25 +293,36 @@ function handleContentClick(e) {
       break;
     }
     case 'delete-expense':
-      confirmDelete('האם למחוק את ההוצאה?').then(ok => {
-        if (ok) {
-          appData.expenses = appData.expenses.filter(ex => ex.id !== id);
-          saveData(appData);
+      confirmDelete('האם למחוק את ההוצאה?').then(async ok => {
+        if (!ok) return;
+        try {
+          showLoading(true);
+          await deleteExpense(id);
+          await refreshData();
           showToast('נמחק', 'success');
           render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
         }
       });
       break;
-    case 'mark-paid': {
-      const expense = appData.expenses.find(ex => ex.id === id);
-      if (expense) {
-        expense.paid = true;
-        saveData(appData);
-        showToast('סומן כשולם', 'success');
-        render();
-      }
+    case 'mark-paid':
+      (async () => {
+        try {
+          showLoading(true);
+          await markExpensePaid(id);
+          await refreshData();
+          showToast('סומן כשולם', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
       break;
-    }
     case 'export-data': {
       const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
@@ -295,18 +336,22 @@ function handleContentClick(e) {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.json';
-      input.onchange = () => {
+      input.onchange = async () => {
         const file = input.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
           try {
-            appData = { ...loadData(), ...JSON.parse(reader.result) };
-            saveData(appData);
+            showLoading(true);
+            const imported = JSON.parse(reader.result);
+            await importAppData(imported);
+            await refreshData();
             showToast('הנתונים יובאו', 'success');
             render();
-          } catch {
-            showToast('קובץ לא תקין');
+          } catch (err) {
+            handleDbError(err, 'קובץ לא תקין');
+          } finally {
+            showLoading(false);
           }
         };
         reader.readAsText(file);
@@ -315,17 +360,33 @@ function handleContentClick(e) {
       break;
     }
     case 'load-demo':
-      appData = seedDemoData(structuredClone(loadData()));
-      showToast('נתוני דוגמה נטענו', 'success');
-      render();
+      (async () => {
+        try {
+          showLoading(true);
+          await seedDemoDataToDb();
+          await refreshData();
+          showToast('נתוני דוגמה נטענו', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
       break;
     case 'reset-data':
-      confirmDelete('האם למחוק את כל הנתונים? פעולה זו בלתי הפיכה.').then(ok => {
-        if (ok) {
-          localStorage.removeItem(getStorageKey());
-          appData = loadData();
+      confirmDelete('האם למחוק את כל הנתונים? פעולה זו בלתי הפיכה.').then(async ok => {
+        if (!ok) return;
+        try {
+          showLoading(true);
+          await deleteAllUserData();
+          await refreshData();
           showToast('הנתונים נמחקו');
           render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
         }
       });
       break;
@@ -352,8 +413,7 @@ function setupEventListeners() {
 
   document.getElementById('content').addEventListener('click', e => {
     if (e.target.closest('.cal-day')) {
-      const day = e.target.closest('.cal-day');
-      handleDayClick(day.dataset.date);
+      handleDayClick(e.target.closest('.cal-day').dataset.date);
       return;
     }
 
@@ -375,8 +435,15 @@ function setupEventListeners() {
       const day = parseInt(dayEl.dataset.day, 10);
       const current = appData.settings.weekSchedule[day] || 'a';
       appData.settings.weekSchedule[day] = current === 'a' ? 'b' : 'a';
-      saveData(appData);
-      render();
+      (async () => {
+        try {
+          await saveSettings(appData.settings);
+          await refreshData();
+          render();
+        } catch (err) {
+          handleDbError(err);
+        }
+      })();
       return;
     }
 
@@ -391,9 +458,19 @@ function setupEventListeners() {
       const fd = getFormData(e.target);
       appData.settings.custodyPattern = fd.custodyPattern;
       appData.settings.custodyStartDate = fd.custodyStartDate;
-      saveData(appData);
-      showToast('הגדרות משמורת נשמרו', 'success');
-      render();
+      (async () => {
+        try {
+          showLoading(true);
+          await saveSettings(appData.settings);
+          await refreshData();
+          showToast('הגדרות משמורת נשמרו', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
     }
     if (e.target.id === 'settings-form') {
       e.preventDefault();
@@ -401,9 +478,19 @@ function setupEventListeners() {
       appData.settings.parentAName = fd.parentAName;
       appData.settings.parentBName = fd.parentBName;
       appData.settings.currentParent = fd.currentParent;
-      saveData(appData);
-      showToast('ההגדרות נשמרו', 'success');
-      render();
+      (async () => {
+        try {
+          showLoading(true);
+          await saveSettings(appData.settings);
+          await refreshData();
+          showToast('ההגדרות נשמרו', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
     }
   });
 
@@ -412,15 +499,16 @@ function setupEventListeners() {
       const input = document.getElementById('message-input');
       const text = input.value.trim();
       if (!text) return;
-      appData.messages.push({
-        id: generateId(),
-        text,
-        sender: appData.settings.currentParent,
-        timestamp: new Date().toISOString()
-      });
-      saveData(appData);
-      input.value = '';
-      render();
+      (async () => {
+        try {
+          await createMessage(text, appData.settings.currentParent);
+          await refreshData();
+          input.value = '';
+          render();
+        } catch (err) {
+          handleDbError(err);
+        }
+      })();
     }
   });
 
@@ -430,33 +518,36 @@ function setupEventListeners() {
   });
 
   document.getElementById('sidebar-overlay').addEventListener('click', closeSidebar);
-
   setupModalListeners();
 }
 
-function onUserLoggedIn(user) {
-  setCurrentUser(user.id);
-  appData = loadData();
-
-  const seenKey = `coparent-seen-${user.id}`;
-  if (appData.children.length === 0 && !localStorage.getItem(seenKey)) {
-    localStorage.setItem(seenKey, '1');
-  }
+async function onUserLoggedIn(user) {
+  if (loadedUserId === user.id) return;
+  loadedUserId = user.id;
 
   hideAuthGate();
   updateUserUI(user);
+  showLoading(true);
 
-  if (!window.location.hash) {
-    window.location.hash = 'dashboard';
+  try {
+    await ensureUserData(user.id);
+    await refreshData();
+  } catch (err) {
+    handleDbError(err, 'שגיאה בטעינת נתונים');
+    appData = structuredClone(DEFAULT_DATA);
+  } finally {
+    showLoading(false);
   }
 
+  if (!window.location.hash) window.location.hash = 'dashboard';
   setupEventListeners();
   render();
 }
 
 function onUserLoggedOut() {
-  setCurrentUser(null);
-  appData = loadData();
+  loadedUserId = null;
+  setDbUser(null);
+  appData = structuredClone(DEFAULT_DATA);
   showAuthGate('login');
 }
 
@@ -474,9 +565,7 @@ async function bootstrap() {
 
   showAuthGate('login');
   const session = await getSession();
-  if (session?.user) {
-    onUserLoggedIn(session.user);
-  }
+  if (session?.user) await onUserLoggedIn(session.user);
 }
 
 bootstrap();
