@@ -35,12 +35,51 @@ function getInviteLink(code) {
 
 function translateDbError(err) {
   const msg = err?.message || '';
-  if (msg.includes('family_settings')) return 'חסרות טבלאות משפחה — הרץ/י את family-migration.sql ב-Supabase';
-  if (msg.includes('ensure_user_family')) return 'חסרה פונקציית משפחה — הרץ/י את family-migration.sql ב-Supabase';
-  if (msg.includes('row-level security') || msg.includes('RLS')) return 'שגיאת הרשאות — הרץ/י את fix-data.sql ב-Supabase';
-  if (msg.includes('parent_a_avatar') || msg.includes('avatar_url')) return 'חסרות עמודות תמונה — הרץ/י את avatars-migration.sql ב-Supabase';
-  if (msg.includes('JWT')) return 'פג תוקף ההתחברות — התחבר/י מחדש';
+  const details = err?.details || '';
+  const combined = `${msg} ${details}`;
+  if (combined.includes('parent_a_avatar') || combined.includes('parent_b_avatar') || combined.includes('avatar_url')) {
+    return 'חסרות עמודות תמונה — הרץ/י ב-Supabase את AVATARS-ONLY.sql';
+  }
+  if (isFamilyDbError(err)) {
+    return 'בעיה בטבלאות משפחה — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
+  }
+  if (combined.includes('row-level security') || combined.includes('RLS')) {
+    return 'שגיאת הרשאות — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
+  }
+  if (combined.includes('JWT')) return 'פג תוקף ההתחברות — התחבר/י מחדש';
   return msg || 'שגיאה בשמירה';
+}
+
+function switchToLegacyMode(reason) {
+  console.warn('Switching to legacy data mode', reason);
+  useLegacyMode = true;
+  familyId = null;
+  familyInfo = null;
+}
+
+function isFamilyDbError(err) {
+  if (!err) return false;
+  const msg = (err.message || '').toLowerCase();
+  const details = (err.details || '').toLowerCase();
+  const combined = `${msg} ${details}`;
+  const familyCodes = ['PGRST200', 'PGRST204', 'PGRST205', '42P01'];
+  if (familyCodes.includes(err.code)) return true;
+  return combined.includes('family_settings')
+    || combined.includes('family_members')
+    || combined.includes('user_family_prefs')
+    || combined.includes('ensure_user_family')
+    || (combined.includes('families') && (
+      combined.includes('does not exist')
+      || combined.includes('could not find')
+      || combined.includes('schema cache')
+    ));
+}
+
+function isAvatarColumnError(err) {
+  const combined = `${err?.message || ''} ${err?.details || ''}`;
+  return combined.includes('parent_a_avatar')
+    || combined.includes('parent_b_avatar')
+    || combined.includes('avatar_url');
 }
 
 function normalizeWeekSchedule(schedule) {
@@ -48,14 +87,44 @@ function normalizeWeekSchedule(schedule) {
   const weekSchedule = { ...defaults };
   const weekSchedule2 = { ...BIWEEKLY_WEEK2_DEFAULT };
   let manualDates = {};
+  let dayDetails = {};
+  let week2DayDetails = {};
+  let manualDayDetails = {};
+  let weekendCycle = null;
+  let monthlyVisits = [];
+  let visitHours = null;
 
   if (!schedule || typeof schedule !== 'object') {
-    return { weekSchedule, weekSchedule2, manualDates };
+    return { weekSchedule, weekSchedule2, manualDates, dayDetails, week2DayDetails, manualDayDetails, weekendCycle, monthlyVisits, visitHours };
   }
 
   Object.entries(schedule).forEach(([key, value]) => {
     if (key === '__manualDates' && value && typeof value === 'object') {
       manualDates = { ...value };
+      return;
+    }
+    if (key === '__dayDetails' && value && typeof value === 'object') {
+      dayDetails = { ...value };
+      return;
+    }
+    if (key === '__week2DayDetails' && value && typeof value === 'object') {
+      week2DayDetails = { ...value };
+      return;
+    }
+    if (key === '__manualDayDetails' && value && typeof value === 'object') {
+      manualDayDetails = { ...value };
+      return;
+    }
+    if (key === '__weekendCycle' && value && typeof value === 'object') {
+      weekendCycle = { ...value };
+      return;
+    }
+    if (key === '__monthlyVisits' && Array.isArray(value)) {
+      monthlyVisits = value.map(v => ({ ...v }));
+      return;
+    }
+    if (key === '__visitHours' && value && typeof value === 'object') {
+      visitHours = { ...value };
       return;
     }
     if (key === '__week2' && value && typeof value === 'object') {
@@ -71,23 +140,44 @@ function normalizeWeekSchedule(schedule) {
     }
   });
 
-  return { weekSchedule, weekSchedule2, manualDates };
+  return { weekSchedule, weekSchedule2, manualDates, dayDetails, week2DayDetails, manualDayDetails, weekendCycle, monthlyVisits, visitHours };
 }
 
-function buildWeekSchedulePayload(weekSchedule, manualDates = {}, weekSchedule2 = null) {
-  const payload = { ...weekSchedule };
-  if (manualDates && Object.keys(manualDates).length > 0) {
-    payload.__manualDates = manualDates;
+function buildWeekSchedulePayload(settings) {
+  const payload = { ...settings.weekSchedule };
+  if (settings.manualDates && Object.keys(settings.manualDates).length > 0) {
+    payload.__manualDates = settings.manualDates;
   }
-  if (weekSchedule2) {
-    payload.__week2 = weekSchedule2;
+  if (settings.weekSchedule2) {
+    payload.__week2 = settings.weekSchedule2;
+  }
+  if (settings.dayDetails && Object.keys(settings.dayDetails).length > 0) {
+    payload.__dayDetails = settings.dayDetails;
+  }
+  if (settings.week2DayDetails && Object.keys(settings.week2DayDetails).length > 0) {
+    payload.__week2DayDetails = settings.week2DayDetails;
+  }
+  if (settings.manualDayDetails && Object.keys(settings.manualDayDetails).length > 0) {
+    payload.__manualDayDetails = settings.manualDayDetails;
+  }
+  if (settings.weekendCycle) {
+    payload.__weekendCycle = settings.weekendCycle;
+  }
+  if (settings.monthlyVisits?.length) {
+    payload.__monthlyVisits = settings.monthlyVisits;
+  }
+  if (settings.visitHours) {
+    payload.__visitHours = settings.visitHours;
   }
   return payload;
 }
 
 function mapSettings(row, currentParent) {
   if (!row) return structuredClone(DEFAULT_DATA.settings);
-  const { weekSchedule, weekSchedule2, manualDates } = normalizeWeekSchedule(row.week_schedule);
+  const {
+    weekSchedule, weekSchedule2, manualDates, dayDetails, week2DayDetails,
+    manualDayDetails, weekendCycle, monthlyVisits, visitHours
+  } = normalizeWeekSchedule(row.week_schedule);
   return {
     parentAName: row.parent_a_name,
     parentBName: row.parent_b_name,
@@ -98,7 +188,13 @@ function mapSettings(row, currentParent) {
     custodyStartDate: row.custody_start_date,
     weekSchedule,
     weekSchedule2,
-    manualDates
+    manualDates,
+    dayDetails,
+    week2DayDetails,
+    manualDayDetails,
+    weekendCycle: weekendCycle || structuredClone(DEFAULT_DATA.settings.weekendCycle),
+    monthlyVisits: monthlyVisits || [],
+    visitHours: visitHours || structuredClone(DEFAULT_DATA.settings.visitHours)
   };
 }
 
@@ -253,7 +349,8 @@ async function loadFamilyAppData() {
   if (settingsRes.error) throw settingsRes.error;
 
   if (!settingsRes.data) {
-    await db().from('family_settings').insert({ family_id: familyId });
+    const insertRes = await db().from('family_settings').insert({ family_id: familyId });
+    if (insertRes.error) throw insertRes.error;
   }
 
   const [childrenRes, eventsRes, expensesRes, messagesRes] = await Promise.all([
@@ -268,12 +365,18 @@ async function loadFamilyAppData() {
   if (expensesRes.error) throw expensesRes.error;
   if (messagesRes.error) throw messagesRes.error;
 
+  let children = childrenRes.data || [];
+  if (children.length === 0) {
+    const legacyChildren = await db().from('children').select('*').eq('user_id', dbUserId).order('created_at');
+    if (!legacyChildren.error) children = legacyChildren.data || [];
+  }
+
   const settingsRow = settingsRes.data || (await db().from('family_settings').select('*').eq('family_id', familyId).single()).data;
 
   return {
     family: familyInfo,
     settings: mapSettings(settingsRow, currentParent),
-    children: (childrenRes.data || []).map(mapChild),
+    children: children.map(mapChild),
     events: (eventsRes.data || []).map(mapEvent),
     expenses: (expensesRes.data || []).map(mapExpense),
     messages: (messagesRes.data || []).map(mapMessage)
@@ -286,37 +389,58 @@ async function loadAppData() {
   if (useLegacyMode || !familyId) {
     return loadLegacyAppData();
   }
-  return loadFamilyAppData();
+
+  try {
+    return await loadFamilyAppData();
+  } catch (err) {
+    if (isFamilyDbError(err)) {
+      switchToLegacyMode(err);
+      return loadLegacyAppData();
+    }
+    throw err;
+  }
 }
 
-async function saveSettings(settings) {
-  if (useLegacyMode || !familyId) {
-    const { error } = await db().from('user_settings').upsert({
-      user_id: dbUserId,
-      parent_a_name: settings.parentAName,
-      parent_b_name: settings.parentBName,
-      parent_a_avatar: settings.parentAAvatar || null,
-      parent_b_avatar: settings.parentBAvatar || null,
-      current_parent: settings.currentParent,
-      custody_pattern: settings.custodyPattern,
-      custody_start_date: settings.custodyStartDate,
-      week_schedule: buildWeekSchedulePayload(settings.weekSchedule, settings.manualDates, settings.weekSchedule2),
-      updated_at: new Date().toISOString()
-    });
-    if (error) throw error;
-    return;
-  }
-
-  const { error: settingsErr } = await db().from('family_settings').update({
+async function saveLegacySettings(settings, includeAvatars = true) {
+  const row = {
+    user_id: dbUserId,
     parent_a_name: settings.parentAName,
     parent_b_name: settings.parentBName,
-    parent_a_avatar: settings.parentAAvatar || null,
-    parent_b_avatar: settings.parentBAvatar || null,
+    current_parent: settings.currentParent,
     custody_pattern: settings.custodyPattern,
     custody_start_date: settings.custodyStartDate,
-    week_schedule: buildWeekSchedulePayload(settings.weekSchedule, settings.manualDates, settings.weekSchedule2),
+    week_schedule: buildWeekSchedulePayload(settings),
     updated_at: new Date().toISOString()
-  }).eq('family_id', familyId);
+  };
+  if (includeAvatars) {
+    row.parent_a_avatar = settings.parentAAvatar || null;
+    row.parent_b_avatar = settings.parentBAvatar || null;
+  }
+  const { error } = await db().from('user_settings').upsert(row);
+  if (error && includeAvatars && isAvatarColumnError(error)) {
+    return saveLegacySettings(settings, false);
+  }
+  if (error) throw error;
+}
+
+async function saveFamilySettings(settings, includeAvatars = true) {
+  const row = {
+    parent_a_name: settings.parentAName,
+    parent_b_name: settings.parentBName,
+    custody_pattern: settings.custodyPattern,
+    custody_start_date: settings.custodyStartDate,
+    week_schedule: buildWeekSchedulePayload(settings),
+    updated_at: new Date().toISOString()
+  };
+  if (includeAvatars) {
+    row.parent_a_avatar = settings.parentAAvatar || null;
+    row.parent_b_avatar = settings.parentBAvatar || null;
+  }
+
+  const { error: settingsErr } = await db().from('family_settings').update(row).eq('family_id', familyId);
+  if (settingsErr && includeAvatars && isAvatarColumnError(settingsErr)) {
+    return saveFamilySettings(settings, false);
+  }
   if (settingsErr) throw settingsErr;
 
   const { error: prefsErr } = await db().from('user_family_prefs').upsert({
@@ -325,6 +449,22 @@ async function saveSettings(settings) {
     current_parent: settings.currentParent
   });
   if (prefsErr) throw prefsErr;
+}
+
+async function saveSettings(settings) {
+  if (useLegacyMode || !familyId) {
+    return saveLegacySettings(settings);
+  }
+
+  try {
+    await saveFamilySettings(settings);
+  } catch (err) {
+    if (isFamilyDbError(err)) {
+      switchToLegacyMode(err);
+      return saveLegacySettings(settings);
+    }
+    throw err;
+  }
 }
 
 async function joinFamilyByCode(code) {
@@ -336,37 +476,70 @@ async function joinFamilyByCode(code) {
   return data;
 }
 
-function childInsertPayload(data) {
+function childInsertPayload(data, includeAvatar = true, includeFamily = true) {
   const payload = {
     user_id: dbUserId,
     name: data.name,
     birth_date: data.birthDate || null,
     school: data.school || '',
     allergies: data.allergies || '',
-    notes: data.notes || '',
-    avatar_url: data.avatarUrl || null
+    notes: data.notes || ''
   };
-  if (familyId) payload.family_id = familyId;
+  if (includeAvatar) payload.avatar_url = data.avatarUrl || null;
+  if (includeFamily && familyId) payload.family_id = familyId;
   return payload;
 }
 
 async function createChild(data) {
-  const { data: row, error } = await db().from('children').insert(childInsertPayload(data)).select().single();
+  async function tryInsert(includeAvatar, includeFamily) {
+    return db().from('children').insert(childInsertPayload(data, includeAvatar, includeFamily)).select().single();
+  }
+
+  let { data: row, error } = await tryInsert(true, true);
+  if (error && isAvatarColumnError(error)) {
+    ({ data: row, error } = await tryInsert(false, true));
+  }
+  if (error && isFamilyDbError(error)) {
+    switchToLegacyMode(error);
+    ({ data: row, error } = await tryInsert(true, false));
+    if (error && isAvatarColumnError(error)) {
+      ({ data: row, error } = await tryInsert(false, false));
+    }
+  }
   if (error) throw error;
   return mapChild(row);
 }
 
-async function updateChild(id, data) {
-  let query = db().from('children').update({
+function buildChildUpdatePayload(data, includeAvatar = true) {
+  const payload = {
     name: data.name,
     birth_date: data.birthDate || null,
     school: data.school || '',
     allergies: data.allergies || '',
-    notes: data.notes || '',
-    avatar_url: data.avatarUrl || null
-  }).eq('id', id).eq('user_id', dbUserId);
-  if (familyId) query = query.eq('family_id', familyId);
-  const { error } = await query;
+    notes: data.notes || ''
+  };
+  if (includeAvatar) payload.avatar_url = data.avatarUrl || null;
+  return payload;
+}
+
+async function updateChild(id, data) {
+  async function tryUpdate(includeAvatar) {
+    return db().from('children').update(buildChildUpdatePayload(data, includeAvatar))
+      .eq('id', id)
+      .eq('user_id', dbUserId);
+  }
+
+  let { error } = await tryUpdate(true);
+  if (error && isAvatarColumnError(error)) {
+    ({ error } = await tryUpdate(false));
+  }
+  if (error && isFamilyDbError(error)) {
+    switchToLegacyMode(error);
+    ({ error } = await tryUpdate(true));
+    if (error && isAvatarColumnError(error)) {
+      ({ error } = await tryUpdate(false));
+    }
+  }
   if (error) throw error;
 }
 

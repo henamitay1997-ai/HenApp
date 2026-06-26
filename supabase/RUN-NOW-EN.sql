@@ -1,21 +1,13 @@
-﻿-- ============================================================
--- RUN-NOW.sql — הרץ/י רק את הקובץ הזה!
--- Supabase → SQL Editor → New query → הדביקי הכל → Run
--- ============================================================
--- ============================================================
--- מיגרציה: שיתוף משפחה בין הורים
--- הרץ/י ב-Supabase SQL Editor אחרי schema.sql הקודם
--- ============================================================
+-- RUN-NOW-EN.sql — safe copy/paste (no Hebrew, no encoding issues)
+-- Supabase -> SQL Editor -> New query -> paste all -> Run
 
--- משפחות (טבלאות קודם — לפני פונקציות שמפנות אליהן)
 create table if not exists public.families (
   id uuid primary key default gen_random_uuid(),
-  name text not null default 'המשפחה שלנו',
+  name text not null default 'Our Family',
   invite_code text unique not null,
   created_at timestamptz default now()
 );
 
--- חברי משפחה
 create table if not exists public.family_members (
   id uuid primary key default gen_random_uuid(),
   family_id uuid references public.families on delete cascade not null,
@@ -26,18 +18,16 @@ create table if not exists public.family_members (
   unique (family_id, parent_role)
 );
 
--- הגדרות משפחה (משותפות)
 create table if not exists public.family_settings (
   family_id uuid references public.families on delete cascade primary key,
-  parent_a_name text not null default 'הורה א',
-  parent_b_name text not null default 'הורה ב',
+  parent_a_name text not null default 'Parent A',
+  parent_b_name text not null default 'Parent B',
   custody_pattern text not null default 'alternating-weeks',
   custody_start_date date not null default current_date,
   week_schedule jsonb not null default '{"0":"a","1":"a","2":"a","3":"b","4":"b","5":"b","6":"b"}'::jsonb,
   updated_at timestamptz default now()
 );
 
--- העדפת משתמש: באיזה הורה אני פועל/ת
 create table if not exists public.user_family_prefs (
   user_id uuid references auth.users on delete cascade not null,
   family_id uuid references public.families on delete cascade not null,
@@ -50,13 +40,11 @@ alter table public.family_members enable row level security;
 alter table public.family_settings enable row level security;
 alter table public.user_family_prefs enable row level security;
 
--- הוספת family_id לטבלאות קיימות
 alter table public.children add column if not exists family_id uuid references public.families on delete cascade;
 alter table public.events add column if not exists family_id uuid references public.families on delete cascade;
 alter table public.expenses add column if not exists family_id uuid references public.families on delete cascade;
 alter table public.messages add column if not exists family_id uuid references public.families on delete cascade;
 
--- יצירת קוד הזמנה
 create or replace function public.generate_invite_code()
 returns text
 language plpgsql
@@ -75,14 +63,13 @@ begin
   exit when not exists (select 1 from public.families where invite_code = result);
     attempts := attempts + 1;
     if attempts > 20 then
-      raise exception 'לא ניתן ליצור קוד הזמנה';
+      raise exception 'Cannot generate invite code';
     end if;
   end loop;
   return result;
 end;
 $$;
 
--- פונקציית עזר: משפחות של המשתמש
 create or replace function public.user_family_ids()
 returns setof uuid
 language sql stable security definer set search_path = public
@@ -90,7 +77,6 @@ as $$
   select family_id from public.family_members where user_id = auth.uid();
 $$;
 
--- מיגרציית נתונים קיימים: כל משתמש מקבל משפחה משלו
 do $$
 declare
   r record;
@@ -100,7 +86,7 @@ begin
   for r in select id from auth.users loop
     if not exists (select 1 from public.family_members where user_id = r.id) then
       v_code := public.generate_invite_code();
-      insert into public.families (name, invite_code) values ('המשפחה שלנו', v_code) returning id into v_family_id;
+      insert into public.families (name, invite_code) values ('Our Family', v_code) returning id into v_family_id;
       insert into public.family_members (family_id, user_id, parent_role) values (v_family_id, r.id, 'a');
       insert into public.family_settings (family_id)
       select v_family_id
@@ -109,7 +95,6 @@ begin
       values (r.id, v_family_id, 'a')
       on conflict do nothing;
 
-      -- העבר הגדרות מ-user_settings אם קיימות
       update public.family_settings fs set
         parent_a_name = us.parent_a_name,
         parent_b_name = us.parent_b_name,
@@ -119,7 +104,6 @@ begin
       from public.user_settings us
       where fs.family_id = v_family_id and us.user_id = r.id;
 
-      -- העבר נתונים למשפחה
       update public.children set family_id = v_family_id where user_id = r.id and family_id is null;
       update public.events set family_id = v_family_id where user_id = r.id and family_id is null;
       update public.expenses set family_id = v_family_id where user_id = r.id and family_id is null;
@@ -132,7 +116,6 @@ begin
   end loop;
 end $$;
 
--- אינדקסים
 create index if not exists idx_family_members_user on public.family_members(user_id);
 create index if not exists idx_children_family on public.children(family_id);
 create index if not exists idx_events_family on public.events(family_id, date);
@@ -140,7 +123,6 @@ create index if not exists idx_expenses_family on public.expenses(family_id, dat
 create index if not exists idx_messages_family on public.messages(family_id, created_at);
 create index if not exists idx_families_invite on public.families(invite_code);
 
--- RLS: משפחות
 drop policy if exists "Members read family" on public.families;
 drop policy if exists "Members read family members" on public.family_members;
 drop policy if exists "Members read family settings" on public.family_settings;
@@ -164,7 +146,6 @@ create policy "Members manage family settings" on public.family_settings
 create policy "Users manage own prefs" on public.user_family_prefs
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
--- עדכון RLS לטבלאות נתונים
 drop policy if exists "Users manage own children" on public.children;
 drop policy if exists "Users manage own events" on public.events;
 drop policy if exists "Users manage own expenses" on public.expenses;
@@ -190,7 +171,6 @@ create policy "Family members manage messages" on public.messages
   for all using (family_id in (select public.user_family_ids()))
   with check (family_id in (select public.user_family_ids()));
 
--- יצירת משפחה למשתמש חדש
 create or replace function public.ensure_user_family()
 returns uuid
 language plpgsql security definer set search_path = public
@@ -203,7 +183,6 @@ begin
   from public.family_members where user_id = auth.uid() limit 1;
 
   if v_family_id is not null then
-    -- ודא הגדרות + תיקון נתונים יתומים
     insert into public.family_settings (family_id) values (v_family_id) on conflict do nothing;
     update public.children set family_id = v_family_id where user_id = auth.uid() and family_id is null;
     update public.events set family_id = v_family_id where user_id = auth.uid() and family_id is null;
@@ -213,7 +192,7 @@ begin
   end if;
 
   v_code := public.generate_invite_code();
-  insert into public.families (name, invite_code) values ('המשפחה שלנו', v_code) returning id into v_family_id;
+  insert into public.families (name, invite_code) values ('Our Family', v_code) returning id into v_family_id;
   insert into public.family_members (family_id, user_id, parent_role) values (v_family_id, auth.uid(), 'a');
   insert into public.family_settings (family_id) values (v_family_id);
   insert into public.user_family_prefs (user_id, family_id, current_parent) values (auth.uid(), v_family_id, 'a');
@@ -222,7 +201,6 @@ begin
 end;
 $$;
 
--- הצטרפות למשפחה לפי קוד
 create or replace function public.join_family_by_code(p_invite_code text)
 returns jsonb
 language plpgsql security definer set search_path = public
@@ -235,14 +213,14 @@ declare
   v_old_member_count int;
 begin
   if auth.uid() is null then
-    raise exception 'יש להתחבר כדי להצטרף למשפחה';
+    raise exception 'Must be logged in to join family';
   end if;
 
   select id into v_family_id
   from public.families where invite_code = upper(trim(p_invite_code));
 
   if v_family_id is null then
-    raise exception 'קוד הזמנה לא תקין';
+    raise exception 'Invalid invite code';
   end if;
 
   if exists (select 1 from public.family_members where family_id = v_family_id and user_id = auth.uid()) then
@@ -251,7 +229,7 @@ begin
 
   select count(*) into v_member_count from public.family_members where family_id = v_family_id;
   if v_member_count >= 2 then
-    raise exception 'המשפחה מלאה — כבר יש 2 הורים מחוברים';
+    raise exception 'Family is full';
   end if;
 
   if exists (select 1 from public.family_members where family_id = v_family_id and parent_role = 'a') then
@@ -260,14 +238,13 @@ begin
     v_assigned_role := 'a';
   end if;
 
-  -- עזיבת משפחה ישנה אם המשתמש לבד בה
   select family_id into v_old_family_id
   from public.family_members where user_id = auth.uid() limit 1;
 
   if v_old_family_id is not null and v_old_family_id != v_family_id then
     select count(*) into v_old_member_count from public.family_members where family_id = v_old_family_id;
     if v_old_member_count > 1 then
-      raise exception 'כבר את/ה חלק ממשפחה עם הורה נוסף. צא/י מהמשפחה הנוכחית קודם.';
+      raise exception 'Already in a family with another parent';
     end if;
     delete from public.family_members where user_id = auth.uid() and family_id = v_old_family_id;
     delete from public.user_family_prefs where user_id = auth.uid() and family_id = v_old_family_id;
@@ -289,7 +266,6 @@ begin
 end;
 $$;
 
--- עדכון trigger למשתמש חדש
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql security definer set search_path = public
@@ -303,7 +279,7 @@ begin
   on conflict (id) do nothing;
 
   v_code := public.generate_invite_code();
-  insert into public.families (name, invite_code) values ('המשפחה שלנו', v_code) returning id into v_family_id;
+  insert into public.families (name, invite_code) values ('Our Family', v_code) returning id into v_family_id;
   insert into public.family_members (family_id, user_id, parent_role) values (v_family_id, new.id, 'a');
   insert into public.family_settings (family_id) values (v_family_id);
   insert into public.user_family_prefs (user_id, family_id, current_parent) values (new.id, v_family_id, 'a');
@@ -315,7 +291,6 @@ $$;
 grant execute on function public.ensure_user_family() to authenticated;
 grant execute on function public.join_family_by_code(text) to authenticated;
 
--- הרשאת קריאת פרופילים של בני משפחה
 drop policy if exists "Family members read partner profiles" on public.profiles;
 create policy "Family members read partner profiles" on public.profiles
   for select using (
@@ -326,11 +301,6 @@ create policy "Family members read partner profiles" on public.profiles
     )
   );
 
--- ============================================================
--- תיקון שמירת נתונים — הרץ/י אם נתונים לא נשמרים
--- ============================================================
-
--- תיקון ensure_user_family: גם מתקן נתונים יתומים
 create or replace function public.ensure_user_family()
 returns uuid
 language plpgsql security definer set search_path = public
@@ -344,17 +314,15 @@ begin
 
   if v_family_id is null then
     v_code := public.generate_invite_code();
-    insert into public.families (name, invite_code) values ('המשפחה שלנו', v_code) returning id into v_family_id;
+    insert into public.families (name, invite_code) values ('Our Family', v_code) returning id into v_family_id;
     insert into public.family_members (family_id, user_id, parent_role) values (v_family_id, auth.uid(), 'a');
     insert into public.family_settings (family_id) values (v_family_id) on conflict do nothing;
     insert into public.user_family_prefs (user_id, family_id, current_parent) values (auth.uid(), v_family_id, 'a') on conflict do nothing;
   end if;
 
-  -- ודא שיש הגדרות משפחה
   insert into public.family_settings (family_id)
   values (v_family_id) on conflict do nothing;
 
-  -- תיקון נתונים יתומים (ללא family_id)
   update public.children set family_id = v_family_id where user_id = auth.uid() and (family_id is null or family_id != v_family_id);
   update public.events set family_id = v_family_id where user_id = auth.uid() and (family_id is null or family_id != v_family_id);
   update public.expenses set family_id = v_family_id where user_id = auth.uid() and (family_id is null or family_id != v_family_id);
@@ -364,7 +332,6 @@ begin
 end;
 $$;
 
--- מדיניות גיבוי: גישה לפי user_id כשאין family_id
 drop policy if exists "Users fallback children" on public.children;
 drop policy if exists "Users fallback events" on public.events;
 drop policy if exists "Users fallback expenses" on public.expenses;
@@ -386,7 +353,6 @@ create policy "Users fallback messages" on public.messages
   for all using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
--- תיקון כל הנתונים הקיימים של כל המשתמשים
 do $$
 declare
   r record;
@@ -403,7 +369,6 @@ begin
     update public.messages set family_id = r.family_id where user_id = r.user_id and family_id is null;
   end loop;
 
-  -- משתמשים עם נתונים אבל בלי משפחה
   for r in
     select distinct c.user_id as uid
     from public.children c
@@ -411,7 +376,7 @@ begin
       and not exists (select 1 from public.family_members fm where fm.user_id = c.user_id)
   loop
     v_code := public.generate_invite_code();
-    insert into public.families (name, invite_code) values ('המשפחה שלנו', v_code) returning id into v_family_id;
+    insert into public.families (name, invite_code) values ('Our Family', v_code) returning id into v_family_id;
     insert into public.family_members (family_id, user_id, parent_role) values (v_family_id, r.uid, 'a');
     insert into public.family_settings (family_id) values (v_family_id) on conflict do nothing;
     insert into public.user_family_prefs (user_id, family_id, current_parent) values (r.uid, v_family_id, 'a') on conflict do nothing;
@@ -424,9 +389,6 @@ end $$;
 
 grant execute on function public.ensure_user_family() to authenticated;
 
--- ============================================================
--- תמונות פרופיל (הורים וילדים)
--- ============================================================
 alter table public.family_settings
   add column if not exists parent_a_avatar text,
   add column if not exists parent_b_avatar text;

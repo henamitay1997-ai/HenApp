@@ -16,7 +16,23 @@ const DEFAULT_DATA = {
       0: 'a', 1: 'a', 2: 'a', 3: 'b', 4: 'b', 5: 'b', 6: 'b'
     },
     weekSchedule2: { ...BIWEEKLY_WEEK2_DEFAULT },
-    manualDates: {}
+    manualDates: {},
+    dayDetails: {},
+    week2DayDetails: {},
+    manualDayDetails: {},
+    weekendCycle: {
+      parent: 'b',
+      offParent: 'a',
+      intervalWeeks: 3,
+      startDate: new Date().toISOString().split('T')[0],
+      days: [4, 5, 6],
+      dayDetails: {}
+    },
+    monthlyVisits: [],
+    visitHours: {
+      baseParent: 'a',
+      days: {}
+    }
   },
   children: [],
   events: [],
@@ -49,13 +65,97 @@ function getBiweeklyWeekIndex(dateStr, custodyStartDate) {
   return weekNum % 2 === 0 ? 1 : 2;
 }
 
+function defaultDayDetail() {
+  return { overnight: true, pickup: '', return: '' };
+}
+
+function normalizeDayDetail(raw) {
+  if (!raw || typeof raw !== 'object') return defaultDayDetail();
+  return {
+    overnight: raw.overnight !== false,
+    pickup: raw.pickup || '',
+    return: raw.return || ''
+  };
+}
+
+function getDayDetailMap(settings, mapName, key) {
+  const map = settings[mapName] || {};
+  return normalizeDayDetail(map[key] ?? map[String(key)]);
+}
+
+function setDayDetailInSettings(settings, mapName, key, patch) {
+  if (!settings[mapName]) settings[mapName] = {};
+  const current = normalizeDayDetail(settings[mapName][key] ?? settings[mapName][String(key)]);
+  settings[mapName][key] = { ...current, ...patch };
+}
+
+function getSaturdayOfWeekContaining(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const sat = new Date(d);
+  sat.setDate(d.getDate() + (6 - d.getDay()));
+  return sat;
+}
+
+function getWeekdayNthInMonth(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return Math.floor((d.getDate() - 1) / 7) + 1;
+}
+
+function getMonthlyVisitForDate(dateStr, monthlyVisits) {
+  if (!monthlyVisits?.length) return null;
+  const dow = new Date(dateStr + 'T12:00:00').getDay();
+  const nth = getWeekdayNthInMonth(dateStr);
+  return monthlyVisits.find(v => v.dayOfWeek === dow && v.nthInMonth === nth) || null;
+}
+
+function isWeekendCycleWeek(dateStr, weekendCycle) {
+  if (!weekendCycle?.startDate) return false;
+  const sat = getSaturdayOfWeekContaining(dateStr);
+  const start = getSaturdayOfWeekContaining(weekendCycle.startDate);
+  const weeksDiff = Math.round((sat - start) / (7 * 86400000));
+  return weeksDiff >= 0 && weeksDiff % (weekendCycle.intervalWeeks || 1) === 0;
+}
+
+function getWeekendCycleParent(dateStr, weekendCycle) {
+  if (!weekendCycle) return null;
+  const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+  if (isWeekendCycleWeek(dateStr, weekendCycle) && weekendCycle.days?.includes(dayOfWeek)) {
+    return weekendCycle.parent;
+  }
+  return weekendCycle.offParent || null;
+}
+
+function getVisitHoursDayConfig(visitHours, dayOfWeek) {
+  const days = visitHours?.days || {};
+  return days[dayOfWeek] ?? days[String(dayOfWeek)] ?? null;
+}
+
 function getCustodyForDate(data, dateStr) {
-  const { custodyPattern, custodyStartDate, weekSchedule, weekSchedule2, manualDates = {} } = data.settings;
+  const {
+    custodyPattern, custodyStartDate, weekSchedule, weekSchedule2,
+    manualDates = {}, weekendCycle, monthlyVisits = [], visitHours
+  } = data.settings;
   const date = new Date(dateStr + 'T12:00:00');
   const dayOfWeek = date.getDay();
 
+  if (manualDates[dateStr]) return manualDates[dateStr];
+
+  const monthly = getMonthlyVisitForDate(dateStr, monthlyVisits);
+  if (monthly) return monthly.parent;
+
+  if (custodyPattern === 'visit-hours') {
+    const dayConfig = getVisitHoursDayConfig(visitHours, dayOfWeek);
+    if (dayConfig?.active) return dayConfig.parent || visitHours?.baseParent || 'a';
+    return visitHours?.baseParent || weekSchedule[dayOfWeek] || 'a';
+  }
+
+  if (custodyPattern === 'weekend-cycle') {
+    const wcParent = getWeekendCycleParent(dateStr, weekendCycle);
+    if (wcParent) return wcParent;
+    return weekSchedule[dayOfWeek] || 'a';
+  }
+
   if (custodyPattern === 'manual') {
-    if (manualDates[dateStr]) return manualDates[dateStr];
     return weekSchedule[dayOfWeek] || 'a';
   }
 
@@ -86,6 +186,53 @@ function getCustodyForDate(data, dateStr) {
     });
   }
   return schedule[dayOfWeek] || 'a';
+}
+
+function getCustodyDayInfo(data, dateStr) {
+  const parent = getCustodyForDate(data, dateStr);
+  const {
+    custodyPattern, custodyStartDate, manualDayDetails = {}, dayDetails = {},
+    week2DayDetails = {}, weekendCycle, monthlyVisits = [], visitHours
+  } = data.settings;
+  const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+  let detail = defaultDayDetail();
+
+  if (manualDayDetails[dateStr]) {
+    detail = normalizeDayDetail(manualDayDetails[dateStr]);
+  } else {
+    const monthly = getMonthlyVisitForDate(dateStr, monthlyVisits);
+    if (monthly && monthly.parent === parent) {
+      detail = normalizeDayDetail(monthly);
+    } else if (custodyPattern === 'weekend-cycle' && isWeekendCycleWeek(dateStr, weekendCycle) && weekendCycle?.days?.includes(dayOfWeek) && weekendCycle.parent === parent) {
+      detail = getDayDetailMap({ dayDetails: weekendCycle.dayDetails || {} }, 'dayDetails', dayOfWeek);
+    } else if (custodyPattern === 'visit-hours') {
+      const dayConfig = getVisitHoursDayConfig(visitHours, dayOfWeek);
+      if (dayConfig?.active) {
+        detail = normalizeDayDetail({
+          overnight: false,
+          pickup: dayConfig.pickup || '14:00',
+          return: dayConfig.return || '18:00'
+        });
+      } else {
+        detail = defaultDayDetail();
+      }
+    } else if (custodyPattern === 'biweekly') {
+      const weekIndex = getBiweeklyWeekIndex(dateStr, custodyStartDate);
+      const detailsMap = weekIndex === 1 ? dayDetails : week2DayDetails;
+      detail = getDayDetailMap({ dayDetails: detailsMap }, 'dayDetails', dayOfWeek);
+    } else {
+      detail = getDayDetailMap(data.settings, 'dayDetails', dayOfWeek);
+    }
+  }
+
+  return { parent, ...detail };
+}
+
+function formatCustodyTimeLabel(info) {
+  if (info.overnight) return 'משמורת עם לינה';
+  const pickup = info.pickup || '?';
+  const ret = info.return || '?';
+  return `ביקור ${pickup}–${ret}`;
 }
 
 function formatDate(dateStr) {

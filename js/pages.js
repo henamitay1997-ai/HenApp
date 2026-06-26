@@ -193,7 +193,19 @@ function renderCustody(data, previewWeekOffset = 0) {
       id: 'biweekly',
       icon: '🔁',
       title: 'לוח דו-שבועי',
-      desc: 'שני לוחות שונים שמתחלפים — למשל שבוע א\'–ב\'–א\' ואז שבוע ב\'–א\'–ב\''
+      desc: 'שני לוחות שונים שמתחלפים — שבוע 1 ואז שבוע 2'
+    },
+    {
+      id: 'weekend-cycle',
+      icon: '🌙',
+      title: 'שבתות / סופי שבוע',
+      desc: 'משמורת בימים נבחרים — למשל כל שבת שלישית'
+    },
+    {
+      id: 'visit-hours',
+      icon: '⏰',
+      title: 'ביקור לפי שעות',
+      desc: 'ביקור ללא לינה — עם שעת איסוף ושעת החזרה'
     },
     {
       id: 'manual',
@@ -218,13 +230,16 @@ function renderCustody(data, previewWeekOffset = 0) {
         <div class="card-header">
           <div class="card-title">איך עובדת המשמורת אצלכם?</div>
         </div>
-        <p class="custody-intro">בחרו את סוג הסידור. אחר כך תוכלו לערוך את הימים בצורה פשוטה וברורה.</p>
+        <p class="custody-intro">בחרו את סוג הסידור:</p>
         <div class="custody-mode-grid" role="radiogroup" aria-label="סוג סידור משמורת">
           ${modes.map(mode => `
             <label class="custody-mode-card ${custodyPattern === mode.id ? 'selected' : ''}">
               <input type="radio" name="custodyPattern" value="${mode.id}" ${custodyPattern === mode.id ? 'checked' : ''}>
-              <span class="custody-mode-icon" aria-hidden="true">${mode.icon}</span>
-              <span class="custody-mode-title">${mode.title}</span>
+              <span class="custody-mode-row">
+                <span class="custody-mode-icon" aria-hidden="true">${mode.icon}</span>
+                <span class="custody-mode-title">${mode.title}</span>
+                <span class="custody-mode-radio" aria-hidden="true"></span>
+              </span>
               <span class="custody-mode-desc">${mode.desc}</span>
             </label>
           `).join('')}
@@ -237,8 +252,8 @@ function renderCustody(data, previewWeekOffset = 0) {
         <div class="card-header">
           <div class="card-title">תצוגה מקדימה</div>
         </div>
-        <p class="custody-intro">כך תיראה המשמורת ב-${custodyPattern === 'manual' || custodyPattern === 'biweekly' ? 'שבועיים הקרובים' : 'השבוע הקרוב'}.</p>
-        ${getWeekPreview(data, custodyPattern === 'manual' || custodyPattern === 'biweekly' ? 14 : 7, 0)}
+        <p class="custody-intro">כך תיראה המשמורת ב-${['manual', 'biweekly', 'weekend-cycle'].includes(custodyPattern) ? 'שבועיים הקרובים' : 'השבוע הקרוב'}.</p>
+        ${getWeekPreview(data, ['manual', 'biweekly', 'weekend-cycle'].includes(custodyPattern) ? 14 : 7, 0)}
       </div>
 
       <div class="custody-save-bar">
@@ -272,17 +287,109 @@ function renderParentPicker(data, type, id, currentParent) {
   `;
 }
 
-function renderWeekDayList(data, schedule, type) {
+function renderVisitHoursDayFields(data, day, config) {
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
+  const c = config || { parent: 'b', pickup: '14:00', return: '18:00' };
+  return `
+    <div class="visit-hours-day-fields-inner">
+      <label class="visit-time-field">
+        <span>הורה בביקור</span>
+        <select class="form-select form-select-sm" data-visit-hours-parent="${day}">
+          <option value="a" ${c.parent === 'a' ? 'selected' : ''}>${parentA}</option>
+          <option value="b" ${c.parent === 'b' ? 'selected' : ''}>${parentB}</option>
+        </select>
+      </label>
+      <label class="visit-time-field">
+        <span>שעת איסוף</span>
+        <input type="time" class="form-input" data-visit-hours-pickup="${day}" value="${c.pickup || '14:00'}">
+      </label>
+      <label class="visit-time-field">
+        <span>שעת החזרה</span>
+        <input type="time" class="form-input" data-visit-hours-return="${day}" value="${c.return || '18:00'}">
+      </label>
+    </div>
+  `;
+}
+
+function renderVisitHoursEditor(data, parentA, parentB) {
+  const vh = data.settings.visitHours || { baseParent: 'a', days: {} };
+
+  return `
+    <div class="card custody-editor">
+      <div class="card-header">
+        <div class="card-title">ביקור לפי שעות</div>
+      </div>
+      <div class="custody-info-box">
+        <p><strong>איך זה עובד?</strong> בימים רגילים הילדים אצל הורה קבוע. בימים שתסמנו — ביקור לפי שעות (ללא לינה) עם איסוף והחזרה.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="visitHoursBaseParent">הורה בימים רגילים (ללא ביקור)</label>
+        <select class="form-select" name="visitHoursBaseParent" id="visitHoursBaseParent">
+          <option value="a" ${vh.baseParent === 'a' ? 'selected' : ''}>${parentA}</option>
+          <option value="b" ${vh.baseParent === 'b' ? 'selected' : ''}>${parentB}</option>
+        </select>
+      </div>
+      <p class="custody-intro">סמנו ימים עם ביקור והזינו שעות:</p>
+      <ul class="custody-day-list visit-hours-list">
+        ${DAY_NAMES.map((name, i) => {
+          const day = vh.days[i] ?? vh.days[String(i)] ?? { active: false, parent: 'b', pickup: '14:00', return: '18:00' };
+          return `
+            <li class="custody-day-row custody-day-expanded visit-hours-day ${day.active ? 'is-visit-active' : ''}">
+              <label class="visit-day-toggle">
+                <input type="checkbox" data-visit-hours-active="${i}" ${day.active ? 'checked' : ''}>
+                <span class="custody-day-name">יום ${name}</span>
+              </label>
+              <div class="visit-hours-day-panel ${day.active ? '' : 'is-hidden'}" data-visit-hours-panel="${i}">
+                ${renderVisitHoursDayFields(data, i, day)}
+              </div>
+            </li>
+          `;
+        }).join('')}
+      </ul>
+      ${renderMonthlyVisitsEditor(data)}
+    </div>
+  `;
+}
+
+function renderDayVisitControls(scope, key, detail) {
+  const d = normalizeDayDetail(detail);
+  return `
+    <div class="day-visit-controls" data-visit-scope="${scope}" data-visit-key="${key}">
+      <label class="visit-overnight-label">
+        <input type="checkbox" data-visit-overnight="${scope}" data-visit-key="${key}" ${d.overnight ? 'checked' : ''}>
+        <span>משמורת עם לינה</span>
+      </label>
+      <div class="visit-times-row ${d.overnight ? 'is-hidden' : ''}" data-visit-times-for="${scope}" data-visit-key="${key}">
+        <label class="visit-time-field">
+          <span>שעת איסוף</span>
+          <input type="time" class="form-input" data-visit-pickup="${scope}" data-visit-key="${key}" value="${d.pickup || ''}">
+        </label>
+        <label class="visit-time-field">
+          <span>שעת החזרה</span>
+          <input type="time" class="form-input" data-visit-return="${scope}" data-visit-key="${key}" value="${d.return || ''}">
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+function renderWeekDayList(data, schedule, type, dayDetailsMap = null) {
+  const detailsSource = dayDetailsMap || data.settings.dayDetails || {};
   return `
     <ul class="custody-day-list">
       ${DAY_NAMES.map((name, i) => {
         const parent = schedule[i] || 'a';
+        const detail = normalizeDayDetail(detailsSource[i] ?? detailsSource[String(i)]);
         return `
-          <li class="custody-day-row">
-            <div class="custody-day-label">
-              <span class="custody-day-name">יום ${name}</span>
+          <li class="custody-day-row custody-day-expanded">
+            <div class="custody-day-main">
+              <div class="custody-day-label">
+                <span class="custody-day-name">יום ${name}</span>
+              </div>
+              ${renderParentPicker(data, type, i, parent)}
             </div>
-            ${renderParentPicker(data, type, i, parent)}
+            ${renderDayVisitControls(type, i, detail)}
           </li>
         `;
       }).join('')}
@@ -290,8 +397,134 @@ function renderWeekDayList(data, schedule, type) {
   `;
 }
 
+function renderMonthlyVisitsEditor(data) {
+  const visits = data.settings.monthlyVisits || [];
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
+
+  return `
+    <div class="card custody-editor" style="margin-top:1rem">
+      <div class="card-header">
+        <div class="card-title">ביקורים חודשיים נוספים</div>
+      </div>
+      <p class="custody-intro">למשל: יום שישי אחד בחודש לכמה שעות בלבד (ללא לינה).</p>
+      <ul class="monthly-visits-list" id="monthly-visits-list">
+        ${visits.map((v, idx) => renderMonthlyVisitRow(data, v, idx)).join('')}
+      </ul>
+      <button type="button" class="btn btn-outline btn-sm" data-add-monthly-visit>+ הוסף ביקור חודשי</button>
+    </div>
+  `;
+}
+
+function renderMonthlyVisitRow(data, visit, idx) {
+  const parentA = getParentName(data, 'a');
+  const parentB = getParentName(data, 'b');
+  const d = normalizeDayDetail(visit);
+  const nthLabels = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי'];
+
+  return `
+    <li class="monthly-visit-row" data-monthly-idx="${idx}">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">יום בשבוע</label>
+          <select class="form-select" data-monthly-field="dayOfWeek" data-monthly-idx="${idx}">
+            ${DAY_NAMES.map((name, i) => `<option value="${i}" ${visit.dayOfWeek === i ? 'selected' : ''}>${name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">איזה בשבוע (בחודש)</label>
+          <select class="form-select" data-monthly-field="nthInMonth" data-monthly-idx="${idx}">
+            ${nthLabels.map((label, i) => `<option value="${i + 1}" ${visit.nthInMonth === i + 1 ? 'selected' : ''}>${label} בחודש</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">הורה</label>
+          <select class="form-select" data-monthly-field="parent" data-monthly-idx="${idx}">
+            <option value="a" ${visit.parent === 'a' ? 'selected' : ''}>${parentA}</option>
+            <option value="b" ${visit.parent === 'b' ? 'selected' : ''}>${parentB}</option>
+          </select>
+        </div>
+      </div>
+      ${renderDayVisitControls('monthly', idx, d)}
+      <button type="button" class="btn btn-sm btn-danger" data-remove-monthly-visit="${idx}">הסר ביקור</button>
+    </li>
+  `;
+}
+
+function renderWeekendCycleEditor(data, parentA, parentB) {
+  const wc = data.settings.weekendCycle || structuredClone(DEFAULT_DATA.settings.weekendCycle);
+  const weekendDays = wc.days || [4, 5, 6];
+
+  return `
+    <div class="card custody-editor">
+      <div class="card-header">
+        <div class="card-title">שבתות וסופי שבוע</div>
+      </div>
+      <div class="custody-info-box">
+        <p><strong>דוגמה:</strong> האבא לוקח את הילדים כל שבת שלישית בחמישי-שישי-שבת.</p>
+        <p>בחרו באיזה שבועות המשמורת פעילה, באילו ימים, ואם יש לינה או רק ביקור עם שעות.</p>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">הורה במשמורת (בשבתות הפעילים)</label>
+          <select class="form-select" name="weekendParent" id="weekendParent">
+            <option value="a" ${wc.parent === 'a' ? 'selected' : ''}>${parentA}</option>
+            <option value="b" ${wc.parent === 'b' ? 'selected' : ''}>${parentB}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">הורה בשאר הזמן</label>
+          <select class="form-select" name="weekendOffParent" id="weekendOffParent">
+            <option value="a" ${wc.offParent === 'a' ? 'selected' : ''}>${parentA}</option>
+            <option value="b" ${wc.offParent === 'b' ? 'selected' : ''}>${parentB}</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">כל כמה שבועות (שבתות)</label>
+          <select class="form-select" name="weekendInterval" id="weekendInterval">
+            ${[1, 2, 3, 4].map(n => `<option value="${n}" ${wc.intervalWeeks === n ? 'selected' : ''}>כל ${n === 1 ? 'שבוע' : 'שבת ' + ['', 'ראשונה', 'שנייה', 'שלישית', 'רביעית'][n]}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="weekendStartDate">שבת התחלה (שבת ראשונה במחזור)</label>
+          <input class="form-input" type="date" id="weekendStartDate" name="weekendStartDate" value="${wc.startDate || data.settings.custodyStartDate}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ימים במשמורת (בשבועות הפעילים)</label>
+        <div class="weekend-days-picker">
+          ${DAY_NAMES.map((name, i) => `
+            <label class="weekend-day-chip ${weekendDays.includes(i) ? 'selected' : ''}">
+              <input type="checkbox" name="weekendDays" value="${i}" ${weekendDays.includes(i) ? 'checked' : ''}>
+              ${name}
+            </label>
+          `).join('')}
+        </div>
+        <p class="form-hint">למשל: סמנו חמישי, שישי ושבת</p>
+      </div>
+      <h3 class="biweekly-week-title" style="margin-top:1rem">סוג משמורת לכל יום (בשבועות הפעילים)</h3>
+      <ul class="custody-day-list">
+        ${weekendDays.sort((a, b) => a - b).map(day => {
+          const detail = normalizeDayDetail((wc.dayDetails || {})[day] ?? (wc.dayDetails || {})[String(day)]);
+          return `
+            <li class="custody-day-row custody-day-expanded">
+              <div class="custody-day-main">
+                <div class="custody-day-label"><span class="custody-day-name">יום ${DAY_NAMES[day]}</span></div>
+              </div>
+              ${renderDayVisitControls('weekend', day, detail)}
+            </li>
+          `;
+        }).join('') || '<li class="custody-intro">סמנו לפחות יום אחד למעלה</li>'}
+      </ul>
+    </div>
+    ${renderMonthlyVisitsEditor(data)}
+  `;
+}
+
 function renderCustodyEditor(data, pattern, parentA, parentB, previewWeekOffset) {
-  const { weekSchedule, weekSchedule2, custodyStartDate, manualDates = {} } = data.settings;
+  const { weekSchedule, weekSchedule2, custodyStartDate, manualDates = {}, manualDayDetails = {} } = data.settings;
 
   if (pattern === 'alternating-weeks') {
     return `
@@ -331,16 +564,21 @@ function renderCustodyEditor(data, pattern, parentA, parentB, previewWeekOffset)
         <ul class="custody-day-list">
           ${DAY_NAMES.map((name, i) => {
             const parent = weekSchedule[i] || 'a';
+            const detail = normalizeDayDetail((data.settings.dayDetails || {})[i]);
             return `
-              <li class="custody-day-row">
-                <div class="custody-day-label">
-                  <span class="custody-day-name">יום ${name}</span>
+              <li class="custody-day-row custody-day-expanded">
+                <div class="custody-day-main">
+                  <div class="custody-day-label">
+                    <span class="custody-day-name">יום ${name}</span>
+                  </div>
+                  ${renderParentPicker(data, 'week', i, parent)}
                 </div>
-                ${renderParentPicker(data, 'week', i, parent)}
+                ${renderDayVisitControls('week', i, detail)}
               </li>
             `;
           }).join('')}
         </ul>
+        ${renderMonthlyVisitsEditor(data)}
         ${pattern === 'custom-alternating' ? `
           <div class="form-group" style="margin-top:1rem">
             <label class="form-label" for="custodyStartDate">תאריך התחלת מחזור</label>
@@ -389,11 +627,20 @@ function renderCustodyEditor(data, pattern, parentA, parentB, previewWeekOffset)
               <button type="button" class="btn btn-outline btn-sm" data-custody-fill-week2="a">כל השבוע → ${parentA}</button>
               <button type="button" class="btn btn-outline btn-sm" data-custody-fill-week2="b">כל השבוע → ${parentB}</button>
             </div>
-            ${renderWeekDayList(data, week2, 'week2')}
+            ${renderWeekDayList(data, week2, 'week2', data.settings.week2DayDetails || {})}
           </div>
         </div>
       </div>
+      ${renderMonthlyVisitsEditor(data)}
     `;
+  }
+
+  if (pattern === 'weekend-cycle') {
+    return renderWeekendCycleEditor(data, parentA, parentB);
+  }
+
+  if (pattern === 'visit-hours') {
+    return renderVisitHoursEditor(data, parentA, parentB);
   }
 
   if (pattern === 'manual') {
@@ -431,13 +678,18 @@ function renderCustodyEditor(data, pattern, parentA, parentB, previewWeekOffset)
             const isManual = Boolean(manualDates[dateStr]);
             const parent = isManual ? manualDates[dateStr] : (weekSchedule[d.getDay()] || 'a');
             const isToday = dateStr === new Date().toISOString().split('T')[0];
+            const dayInfo = getCustodyDayInfo(data, dateStr);
+            const manualDetail = normalizeDayDetail((manualDayDetails || {})[dateStr]);
             return `
-              <li class="custody-day-row ${isToday ? 'is-today' : ''} ${isManual ? 'is-manual' : ''}">
-                <div class="custody-day-label">
-                  <span class="custody-day-name">${formatDateShort(dateStr)}</span>
-                  ${isManual ? '<span class="custody-manual-tag">ידני</span>' : ''}
+              <li class="custody-day-row custody-day-expanded ${isToday ? 'is-today' : ''} ${isManual ? 'is-manual' : ''}">
+                <div class="custody-day-main">
+                  <div class="custody-day-label">
+                    <span class="custody-day-name">${formatDateShort(dateStr)}</span>
+                    ${isManual ? '<span class="custody-manual-tag">ידני</span>' : ''}
+                  </div>
+                  ${renderParentPicker(data, 'manual', dateStr, parent)}
                 </div>
-                ${renderParentPicker(data, 'manual', dateStr, parent)}
+                ${renderDayVisitControls('manual', dateStr, isManual ? manualDetail : dayInfo)}
               </li>
             `;
           }).join('')}
@@ -481,16 +733,22 @@ function getWeekPreview(data, days = 7, startOffset = 0) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
     const dateStr = d.toISOString().split('T')[0];
-    const custody = getCustodyForDate(data, dateStr);
+    const dayInfo = getCustodyDayInfo(data, dateStr);
     const isManual = data.settings.custodyPattern === 'manual' && data.settings.manualDates?.[dateStr];
     const biweeklyWeek = data.settings.custodyPattern === 'biweekly'
       ? getBiweeklyWeekIndex(dateStr, data.settings.custodyStartDate)
       : null;
+    const isWeekendWeek = data.settings.custodyPattern === 'weekend-cycle'
+      && isWeekendCycleWeek(dateStr, data.settings.weekendCycle);
+    const visitLabel = !dayInfo.overnight ? formatCustodyTimeLabel(dayInfo) : '';
     html += `
-      <li class="custody-preview-row custody-parent-${custody} ${dateStr === todayStr ? 'is-today' : ''}">
+      <li class="custody-preview-row custody-parent-${dayInfo.parent} ${dateStr === todayStr ? 'is-today' : ''}">
         <span class="custody-preview-date">${formatDateShort(dateStr)}</span>
         ${biweeklyWeek ? `<span class="custody-cycle-tag">שבוע ${biweeklyWeek}</span>` : ''}
-        <span class="badge badge-${custody}">${getParentName(data, custody)}</span>
+        ${isWeekendWeek ? '<span class="custody-cycle-tag">שבת פעילה</span>' : ''}
+        ${!dayInfo.overnight ? '<span class="custody-visit-tag">ללא לינה</span>' : ''}
+        <span class="badge badge-${dayInfo.parent}">${getParentName(data, dayInfo.parent)}</span>
+        ${visitLabel ? `<span class="custody-time-tag">${visitLabel}</span>` : ''}
         ${isManual ? '<span class="custody-manual-tag">ידני</span>' : ''}
       </li>
     `;
@@ -1053,11 +1311,14 @@ function initExpenseSplitPicker(form) {
 }
 
 function getDayDetailHtml(data, dateStr) {
-  const custody = getCustodyForDate(data, dateStr);
+  const dayInfo = getCustodyDayInfo(data, dateStr);
   const events = data.events.filter(e => e.date === dateStr);
+  const visitNote = !dayInfo.overnight
+    ? `<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">${formatCustodyTimeLabel(dayInfo)}</p>`
+    : '<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">משמורת עם לינה</p>';
 
   return `
-    <p style="margin-bottom:1rem"><strong>משמורת:</strong> <span class="badge badge-${custody}">${getParentName(data, custody)}</span></p>
+    <p style="margin-bottom:1rem"><strong>משמורת:</strong> <span class="badge badge-${dayInfo.parent}">${getParentName(data, dayInfo.parent)}</span>${visitNote}</p>
     ${events.length === 0 ? '<p style="color:var(--text-muted)">אין אירועים ביום זה</p>' : `
       <ul class="list">
         ${events.map(e => `

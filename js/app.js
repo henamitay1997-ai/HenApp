@@ -468,6 +468,103 @@ function handleContentClick(e) {
   }
 }
 
+function readVisitDetailFromDom(scope, key) {
+  const overnightEl = document.querySelector(`input[data-visit-overnight="${scope}"][data-visit-key="${key}"]`);
+  const pickupEl = document.querySelector(`input[data-visit-pickup="${scope}"][data-visit-key="${key}"]`);
+  const returnEl = document.querySelector(`input[data-visit-return="${scope}"][data-visit-key="${key}"]`);
+  return {
+    overnight: overnightEl ? overnightEl.checked : true,
+    pickup: pickupEl?.value || '',
+    return: returnEl?.value || ''
+  };
+}
+
+function applyVisitDetailToSettings(scope, key) {
+  const detail = readVisitDetailFromDom(scope, key);
+  if (scope === 'week') {
+    setDayDetailInSettings(appData.settings, 'dayDetails', key, detail);
+  } else if (scope === 'week2') {
+    if (!appData.settings.week2DayDetails) appData.settings.week2DayDetails = {};
+    setDayDetailInSettings(appData.settings, 'week2DayDetails', key, detail);
+  } else if (scope === 'weekend') {
+    if (!appData.settings.weekendCycle) appData.settings.weekendCycle = structuredClone(DEFAULT_DATA.settings.weekendCycle);
+    if (!appData.settings.weekendCycle.dayDetails) appData.settings.weekendCycle.dayDetails = {};
+    appData.settings.weekendCycle.dayDetails[key] = detail;
+  } else if (scope === 'manual') {
+    setDayDetailInSettings(appData.settings, 'manualDayDetails', key, detail);
+  } else if (scope === 'monthly') {
+    const idx = parseInt(key, 10);
+    if (appData.settings.monthlyVisits?.[idx]) {
+      Object.assign(appData.settings.monthlyVisits[idx], detail);
+    }
+  }
+}
+
+function collectCustodyExtrasFromForm(form) {
+  for (let i = 0; i < 7; i++) {
+    if (form.querySelector(`input[data-visit-overnight="week"][data-visit-key="${i}"]`)) {
+      applyVisitDetailToSettings('week', i);
+    }
+    if (form.querySelector(`input[data-visit-overnight="week2"][data-visit-key="${i}"]`)) {
+      applyVisitDetailToSettings('week2', i);
+    }
+  }
+
+  if (form.weekendParent) {
+    const wc = appData.settings.weekendCycle || structuredClone(DEFAULT_DATA.settings.weekendCycle);
+    wc.parent = form.weekendParent.value;
+    wc.offParent = form.weekendOffParent.value;
+    wc.intervalWeeks = parseInt(form.weekendInterval.value, 10) || 3;
+    wc.startDate = form.weekendStartDate.value;
+    wc.days = [...form.querySelectorAll('input[name="weekendDays"]:checked')].map(el => parseInt(el.value, 10));
+    wc.dayDetails = {};
+    wc.days.forEach(day => {
+      wc.dayDetails[day] = readVisitDetailFromDom('weekend', day);
+    });
+    appData.settings.weekendCycle = wc;
+  }
+
+  const monthlyRows = form.querySelectorAll('.monthly-visit-row');
+  if (monthlyRows.length) {
+    appData.settings.monthlyVisits = [...monthlyRows].map(row => {
+      const idx = row.dataset.monthlyIdx;
+      return {
+        dayOfWeek: parseInt(row.querySelector('[data-monthly-field="dayOfWeek"]').value, 10),
+        nthInMonth: parseInt(row.querySelector('[data-monthly-field="nthInMonth"]').value, 10),
+        parent: row.querySelector('[data-monthly-field="parent"]').value,
+        ...readVisitDetailFromDom('monthly', idx)
+      };
+    });
+  }
+
+  document.querySelectorAll('input[data-visit-overnight="manual"]').forEach(el => {
+    applyVisitDetailToSettings('manual', el.dataset.visitKey);
+  });
+
+  collectVisitHoursFromForm(form);
+}
+
+function collectVisitHoursFromForm(form) {
+  if (!form.visitHoursBaseParent) return;
+  const days = {};
+  for (let i = 0; i < 7; i++) {
+    const activeEl = form.querySelector(`input[data-visit-hours-active="${i}"]`);
+    if (!activeEl) continue;
+    if (activeEl.checked) {
+      days[i] = {
+        active: true,
+        parent: form.querySelector(`[data-visit-hours-parent="${i}"]`)?.value || 'b',
+        pickup: form.querySelector(`[data-visit-hours-pickup="${i}"]`)?.value || '14:00',
+        return: form.querySelector(`[data-visit-hours-return="${i}"]`)?.value || '18:00'
+      };
+    }
+  }
+  appData.settings.visitHours = {
+    baseParent: form.visitHoursBaseParent.value,
+    days
+  };
+}
+
 function setupEventListeners() {
   if (listenersReady) return;
   listenersReady = true;
@@ -523,6 +620,56 @@ function setupEventListeners() {
       const btn = e.target.closest('[data-manual-date]');
       if (!appData.settings.manualDates) appData.settings.manualDates = {};
       appData.settings.manualDates[btn.dataset.manualDate] = btn.dataset.parent;
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.matches('[data-visit-overnight]')) {
+      const scope = e.target.dataset.visitOvernight;
+      const key = e.target.dataset.visitKey;
+      const timesRow = document.querySelector(`[data-visit-times-for="${scope}"][data-visit-key="${key}"]`);
+      if (timesRow) timesRow.classList.toggle('is-hidden', e.target.checked);
+      applyVisitDetailToSettings(scope, key);
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.matches('[data-visit-pickup], [data-visit-return]')) {
+      const scope = e.target.dataset.visitPickup || e.target.dataset.visitReturn;
+      const key = e.target.dataset.visitKey;
+      applyVisitDetailToSettings(scope, key);
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.matches('[data-visit-hours-active]')) {
+      const day = e.target.dataset.visitHoursActive;
+      const panel = document.querySelector(`[data-visit-hours-panel="${day}"]`);
+      const row = e.target.closest('.visit-hours-day');
+      if (panel) panel.classList.toggle('is-hidden', !e.target.checked);
+      if (row) row.classList.toggle('is-visit-active', e.target.checked);
+      collectVisitHoursFromForm(e.target.closest('#custody-form') || document);
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.closest('[data-add-monthly-visit]')) {
+      if (!appData.settings.monthlyVisits) appData.settings.monthlyVisits = [];
+      appData.settings.monthlyVisits.push({
+        dayOfWeek: 5,
+        nthInMonth: 1,
+        parent: 'b',
+        overnight: false,
+        pickup: '14:00',
+        return: '18:00'
+      });
+      saveCustodySettings();
+      return;
+    }
+
+    if (e.target.closest('[data-remove-monthly-visit]')) {
+      const idx = parseInt(e.target.closest('[data-remove-monthly-visit]').dataset.removeMonthlyVisit, 10);
+      appData.settings.monthlyVisits.splice(idx, 1);
       saveCustodySettings();
       return;
     }
@@ -593,6 +740,21 @@ function setupEventListeners() {
   document.getElementById('topbar-actions').addEventListener('click', handleContentClick);
 
   document.getElementById('content').addEventListener('change', e => {
+    if (e.target.matches('[data-monthly-field]')) {
+      collectCustodyExtrasFromForm(e.target.closest('#custody-form') || document);
+      saveCustodySettings();
+      return;
+    }
+    if (e.target.matches('#visitHoursBaseParent, [data-visit-hours-parent], [data-visit-hours-pickup], [data-visit-hours-return]')) {
+      collectVisitHoursFromForm(e.target.closest('#custody-form') || document);
+      saveCustodySettings();
+      return;
+    }
+    if (e.target.matches('input[name="weekendDays"], #weekendParent, #weekendOffParent, #weekendInterval, #weekendStartDate')) {
+      collectCustodyExtrasFromForm(e.target.closest('#custody-form') || document);
+      saveCustodySettings();
+      return;
+    }
     if (e.target.name === 'custodyPattern' && e.target.closest('#custody-form')) {
       appData.settings.custodyPattern = e.target.value;
       custodyPreviewWeekOffset = 0;
@@ -600,6 +762,12 @@ function setupEventListeners() {
         if (!appData.settings.weekSchedule2) {
           appData.settings.weekSchedule2 = { ...getBiweeklyPresets().week2 };
         }
+      }
+      if (e.target.value === 'weekend-cycle' && !appData.settings.weekendCycle) {
+        appData.settings.weekendCycle = structuredClone(DEFAULT_DATA.settings.weekendCycle);
+      }
+      if (e.target.value === 'visit-hours' && !appData.settings.visitHours) {
+        appData.settings.visitHours = structuredClone(DEFAULT_DATA.settings.visitHours);
       }
       saveCustodySettings();
     }
@@ -609,6 +777,7 @@ function setupEventListeners() {
     if (e.target.id === 'custody-form') {
       e.preventDefault();
       const fd = getFormData(e.target);
+      collectCustodyExtrasFromForm(e.target);
       appData.settings.custodyPattern = fd.custodyPattern || appData.settings.custodyPattern;
       if (fd.custodyStartDate) appData.settings.custodyStartDate = fd.custodyStartDate;
       (async () => {

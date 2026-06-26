@@ -682,27 +682,35 @@ body {
 .custody-mode-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 @media (min-width: 900px) {
   .custody-mode-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
   }
 }
 
 .custody-mode-card {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 0.35rem;
-  padding: 1rem;
+  padding: 0.85rem;
   border: 2px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   cursor: pointer;
-  transition: all 0.15s;
-  min-height: 120px;
+  transition: border-color 0.15s, background 0.15s;
+  min-height: 0;
+}
+
+.custody-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
 }
 
 .custody-mode-card input { position: absolute; opacity: 0; pointer-events: none; }
@@ -713,9 +721,22 @@ body {
   box-shadow: 0 0 0 1px var(--primary);
 }
 
-.custody-mode-icon { font-size: 1.5rem; }
-.custody-mode-title { font-weight: 700; font-size: 0.95rem; color: var(--text); }
-.custody-mode-desc { font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; }
+.custody-mode-icon { font-size: 1.25rem; flex-shrink: 0; line-height: 1; }
+.custody-mode-title { font-weight: 700; font-size: 0.9rem; color: var(--text); flex: 1; line-height: 1.3; }
+.custody-mode-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
+.custody-mode-radio {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
+.custody-mode-card.selected .custody-mode-radio {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
 
 .custody-info-box {
   background: var(--surface-2);
@@ -995,9 +1016,213 @@ body {
   padding: 0.25rem 0;
 }
 
+.custody-day-expanded {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+}
+
+.custody-day-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.day-visit-controls {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  background: var(--bg-muted, #f6f7f9);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.visit-overnight-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.visit-times-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.visit-times-row.is-hidden {
+  display: none;
+}
+
+.visit-time-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 8rem;
+  font-size: 0.85rem;
+}
+
+.weekend-days-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.weekend-day-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.weekend-day-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.weekend-day-chip.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  font-weight: 600;
+}
+
+.monthly-visits-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.monthly-visit-row {
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.custody-visit-tag {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: #fff3e0;
+  color: #e65100;
+  font-weight: 600;
+}
+
+.custody-time-tag {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.visit-hours-list .visit-hours-day {
+  gap: 0.5rem;
+}
+
+.visit-hours-day.is-visit-active {
+  border-color: #e65100;
+  background: #fff8f0;
+}
+
+.visit-day-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  width: 100%;
+}
+
+.visit-hours-day-panel.is-hidden {
+  display: none;
+}
+
+.visit-hours-day-fields-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.visit-hours-day-fields-inner .form-select-sm {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem;
+}
+
 @media (max-width: 768px) {
   .custody-mode-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .custody-mode-card {
+    padding: 0.45rem 0.5rem;
+    border-width: 1px;
+    border-radius: 8px;
+    gap: 0.2rem;
+  }
+
+  .custody-mode-card.selected {
+    box-shadow: none;
+    border-width: 2px;
+  }
+
+  .custody-mode-row {
+    gap: 0.3rem;
+    align-items: flex-start;
+  }
+
+  .custody-mode-icon {
+    font-size: 0.95rem;
+    margin-top: 0.05rem;
+  }
+
+  .custody-mode-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .custody-mode-desc {
+    font-size: 0.68rem;
+    line-height: 1.32;
+    display: block;
+  }
+
+  .custody-mode-radio {
+    width: 0.8rem;
+    height: 0.8rem;
+    border-width: 1.5px;
+    margin-top: 0.1rem;
+  }
+
+  .custody-intro {
+    margin-bottom: 0.5rem;
+    font-size: 0.82rem;
+  }
+
+  .custody-page .card-header {
+    padding-bottom: 0.35rem;
+  }
+
+  .custody-page .card-title {
+    font-size: 1rem;
   }
 
   .biweekly-weeks {
