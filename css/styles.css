@@ -917,6 +917,93 @@ body {
   }
 }
 
+/* Desktop calendar — fit full month on screen, centered */
+@media (min-width: 769px) {
+  .content:has(> .calendar-card) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 4.5rem);
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .calendar-card {
+    width: 100%;
+    max-width: min(900px, calc(100vw - var(--sidebar-width) - 3.5rem));
+    margin: 0 auto;
+    padding: 1rem 1.25rem;
+  }
+
+  .calendar-header {
+    margin-bottom: 0.6rem;
+    gap: 0.45rem;
+  }
+
+  .calendar-month-title {
+    font-size: 1.05rem;
+    min-width: 140px;
+  }
+
+  .calendar-legend {
+    font-size: 0.78rem;
+    gap: 0.4rem;
+  }
+
+  .calendar-grid {
+    gap: 3px;
+  }
+
+  .cal-day-name {
+    padding: 0.2rem 0;
+    font-size: 0.72rem;
+  }
+
+  .cal-day {
+    aspect-ratio: unset;
+    min-height: unset;
+    height: clamp(46px, calc((100vh - 17rem) / 6), 68px);
+    padding: 0.25rem;
+  }
+
+  .cal-day.cal-visit-day .cal-day-content {
+    padding: 0.25rem;
+  }
+
+  .cal-day-num {
+    font-size: 0.76rem;
+    margin-bottom: 0.1rem;
+  }
+
+  .cal-day.today .cal-day-num {
+    width: 1.3rem;
+    height: 1.3rem;
+    font-size: 0.72rem;
+  }
+
+  .cal-today-badge {
+    font-size: 0.48rem;
+    padding: 0.1rem 0.28rem;
+  }
+
+  .cal-holiday-bar {
+    font-size: 0.56rem;
+    padding: 0.08rem 0.22rem;
+    line-height: 1.1;
+  }
+
+  .cal-visit-time {
+    font-size: 0.52rem;
+    padding: 0.06rem 0.18rem;
+    margin-bottom: 0.08rem;
+  }
+
+  .cal-event-dot {
+    font-size: 0.58rem;
+  }
+}
+
 /* Custody schedule */
 .week-grid {
   display: grid;

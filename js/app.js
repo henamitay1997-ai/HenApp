@@ -140,7 +140,7 @@ function getCalendarPrintHtml() {
   <meta charset="UTF-8">
   <title>לוח משמורת</title>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="${base}css/styles.css?v=8">
+  <link rel="stylesheet" href="${base}css/styles.css?v=9">
   <style>
     body { margin: 0; padding: 16px; font-family: Heebo, sans-serif; background: #fff; }
     @page { size: A4 landscape; margin: 12mm; }
