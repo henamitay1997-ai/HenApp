@@ -755,6 +755,7 @@ function handleConsentForm(consent = null) {
   let footer = '';
   if (isCompleted) {
     footer = `<button class="btn btn-primary" id="modal-download-consent-pdf">📄 הורד PDF</button>
+      <button class="btn btn-secondary" id="modal-print-consent">🖨️ הדפס / שמור PDF</button>
       <button class="btn btn-secondary" id="modal-cancel">סגור</button>`;
   } else {
     footer = `<button class="btn btn-primary" id="modal-save-consent">${isNew ? 'שמור טיוטה' : 'שמור שינויים'}</button>`;
@@ -902,14 +903,14 @@ function handleConsentForm(consent = null) {
   document.getElementById('modal-download-consent-pdf')?.addEventListener('click', async () => {
     if (!consent) return;
     try {
-      showLoading(true);
       await downloadConsentPdf(appData, consent);
-      showToast('ה-PDF הורד', 'success');
     } catch (err) {
       showToast(err.message || 'שגיאה בהורדת PDF');
-    } finally {
-      showLoading(false);
     }
+  });
+  document.getElementById('modal-print-consent')?.addEventListener('click', () => {
+    if (!consent || typeof printConsentForm !== 'function') return;
+    printConsentForm(appData, consent);
   });
 
   document.getElementById('modal-cancel')?.addEventListener('click', () => {
@@ -1195,17 +1196,16 @@ function handleContentClick(e) {
     case 'download-consent-pdf': {
       const consent = (appData.consentForms || []).find(c => c.id === id);
       if (consent) {
-        (async () => {
-          try {
-            showLoading(true);
-            await downloadConsentPdf(appData, consent);
-            showToast('ה-PDF הורד', 'success');
-          } catch (err) {
-            showToast(err.message || 'שגיאה בהורדת PDF');
-          } finally {
-            showLoading(false);
-          }
-        })();
+        downloadConsentPdf(appData, consent).catch(err => {
+          showToast(err.message || 'שגיאה בהורדת PDF');
+        });
+      }
+      break;
+    }
+    case 'print-consent': {
+      const consent = (appData.consentForms || []).find(c => c.id === id);
+      if (consent && typeof printConsentForm === 'function') {
+        printConsentForm(appData, consent);
       }
       break;
     }
