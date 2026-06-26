@@ -1387,7 +1387,7 @@ function renderFamilySettings(family) {
 function renderSettings(data) {
   const { settings } = data;
   const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-  const accountCard = user ? renderAccountSettings(user) : '';
+  const accountCard = user ? renderAccountSettings(user, data.myProfile) : '';
   const familyCard = data.family ? renderFamilySettings(data.family) : '';
 
   return `
@@ -1409,6 +1409,11 @@ function renderSettings(data) {
               <input class="form-input" name="parentBName" value="${settings.parentBName}">
               ${renderAvatarPicker('parentBAvatar', settings.parentBName, settings.parentBAvatar, 'תמונת הורה ב', 'avatar-parent-b')}
             </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">הת.ז. שלי (לטפסי חתימה)</label>
+            <input class="form-input" name="myIdNumber" inputmode="numeric" maxlength="9" pattern="[0-9]{5,9}" placeholder="למשל: 123456782" value="${data.myProfile?.idNumber || ''}">
+            <p class="form-hint">נשמר בפרופיל שלך בלבד — ימולא אוטומטית בטפסי הסכמה הורית משותפת</p>
           </div>
           <div class="form-group">
             <label class="form-label">אני מחובר/ת כ:</label>

@@ -49,7 +49,8 @@ const DEFAULT_DATA = {
   expenses: [],
   messages: [],
   consentForms: [],
-  updates: []
+  updates: [],
+  myProfile: { idNumber: '' }
 };
 
 function getParentName(data, parent) {

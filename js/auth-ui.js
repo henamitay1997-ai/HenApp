@@ -186,8 +186,9 @@ function updateUserUI(user) {
   if (footer) footer.textContent = `מחובר/ת: ${name}`;
 }
 
-function renderAccountSettings(user) {
+function renderAccountSettings(user, myProfile = {}) {
   const name = getUserDisplayName(user);
+  const idNumber = myProfile.idNumber || '';
   return `
     <div class="card">
       <div class="card-title" style="margin-bottom:1rem">החשבון שלי</div>
@@ -200,7 +201,12 @@ function renderAccountSettings(user) {
           <span class="account-label">אימייל</span>
           <span class="account-value" dir="ltr">${user.email}</span>
         </div>
+        <div class="account-row">
+          <span class="account-label">ת.ז.</span>
+          <span class="account-value" dir="ltr">${idNumber || '—'}</span>
+        </div>
       </div>
+      <p class="form-hint" style="margin-top:0.75rem">ניתן לעדכן ת.ז. בטופס «פרטי הורים» למטה — תמולא אוטומטית בטפסי חתימה</p>
       <button class="btn btn-danger" data-action="logout" style="margin-top:1rem;width:100%">התנתק</button>
     </div>
   `;

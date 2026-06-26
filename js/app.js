@@ -1469,6 +1469,9 @@ function setupEventListeners() {
         try {
           showLoading(true);
           await saveSettings(appData.settings);
+          if (typeof saveProfileIdNumber === 'function') {
+            await saveProfileIdNumber(fd.myIdNumber || '');
+          }
           await refreshData();
           showToast('ההגדרות נשמרו', 'success');
           render();

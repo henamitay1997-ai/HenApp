@@ -54,7 +54,8 @@ function getFamilyMemberByRole(data, role) {
 function getMyProfileIdNumber(data) {
   const myRole = typeof getMySenderRole === 'function' ? getMySenderRole() : 'a';
   const me = getFamilyMemberByRole(data, myRole);
-  return me?.idNumber || '';
+  if (me?.idNumber) return me.idNumber;
+  return data.myProfile?.idNumber || '';
 }
 
 function consentHasSignature(consent, role) {
@@ -187,7 +188,6 @@ function renderConsentFormModalHtml(data, consent) {
   const signedA = consentHasSignature(c, 'a');
   const signedB = consentHasSignature(c, 'b');
   const canSign = consent && canSignConsent(c, myRole);
-  const myParentKey = myRole === 'a' ? 'a' : 'b';
 
   return `
     <form id="consent-form" class="consent-form">

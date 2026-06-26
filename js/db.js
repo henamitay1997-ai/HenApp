@@ -46,6 +46,9 @@ function translateDbError(err) {
   if (combined.includes('consent_forms') || combined.includes('app_updates')) {
     return 'חסרות טבלאות אישורים — הרץ/י ב-Supabase את consent-forms.sql';
   }
+  if (combined.includes('id_number')) {
+    return 'חסרה עמודת ת.ז. בפרופיל — הרץ/י ב-Supabase את consent-forms.sql';
+  }
   if (isFamilyDbError(err)) {
     return 'בעיה בטבלאות משפחה — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
   }
@@ -371,6 +374,21 @@ async function ensureUserData(userId) {
   await loadFamilyContext();
 }
 
+async function loadMyProfile() {
+  try {
+    const { data, error } = await db().from('profiles').select('id_number').eq('id', dbUserId).maybeSingle();
+    if (error) {
+      if (`${error.message}`.includes('id_number')) return { idNumber: '' };
+      throw error;
+    }
+    return { idNumber: data?.id_number || '' };
+  } catch (err) {
+    if (`${err?.message || ''}`.includes('id_number')) return { idNumber: '' };
+    console.warn('Could not load profile', err);
+    return { idNumber: '' };
+  }
+}
+
 async function loadConsentAndUpdates(scopeField, scopeId) {
   const consentQuery = db().from('consent_forms').select('*').eq(scopeField, scopeId).order('created_at', { ascending: false });
   const updatesQuery = db().from('app_updates').select('*').eq(scopeField, scopeId).order('created_at', { ascending: false });
@@ -406,6 +424,7 @@ async function loadLegacyAppData() {
   if (messagesRes.error) throw messagesRes.error;
 
   const extra = await loadConsentAndUpdates('user_id', dbUserId);
+  const myProfile = await loadMyProfile();
 
   return {
     family: null,
@@ -414,6 +433,7 @@ async function loadLegacyAppData() {
     events: (eventsRes.data || []).map(mapEvent),
     expenses: (expensesRes.data || []).map(mapExpense),
     messages: (messagesRes.data || []).map(mapMessage),
+    myProfile,
     ...extra
   };
 }
@@ -451,6 +471,7 @@ async function loadFamilyAppData() {
 
   const settingsRow = settingsRes.data || (await db().from('family_settings').select('*').eq('family_id', familyId).single()).data;
   const extra = await loadConsentAndUpdates('family_id', familyId);
+  const myProfile = await loadMyProfile();
 
   return {
     family: familyInfo,
@@ -459,6 +480,7 @@ async function loadFamilyAppData() {
     events: (eventsRes.data || []).map(mapEvent),
     expenses: (expensesRes.data || []).map(mapExpense),
     messages: (messagesRes.data || []).map(mapMessage),
+    myProfile,
     ...extra
   };
 }
@@ -928,6 +950,7 @@ async function markAppUpdateRead(id, parentRole) {
 }
 
 async function saveProfileIdNumber(idNumber) {
-  const { error } = await db().from('profiles').update({ id_number: idNumber || null }).eq('id', dbUserId);
-  if (error && !`${error.message}`.includes('id_number')) throw error;
+  const value = (idNumber || '').trim() || null;
+  const { error } = await db().from('profiles').update({ id_number: value }).eq('id', dbUserId);
+  if (error) throw error;
 }
