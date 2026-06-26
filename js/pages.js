@@ -154,6 +154,7 @@ function renderCalendar(data, year, month) {
             ביקור ללא לינה
           </span>
           <span class="calendar-legend-holiday"><span class="cal-holiday-bar major">חג</span></span>
+          <span class="calendar-legend-birthday">🎂 יום הולדת</span>
         </div>
       </div>
       <div class="calendar-grid" id="calendar-grid">
@@ -170,6 +171,8 @@ function renderCalDay(num, dateStr, data, otherMonth, options = {}) {
   const events = data.events.filter(e => e.date === dateStr);
   const isToday = dateStr === today;
   const holidays = typeof getHolidaysForDate === 'function' ? getHolidaysForDate(dateStr) : [];
+  const birthdays = typeof getBirthdaysOnDateSync === 'function' ? getBirthdaysOnDateSync(data, dateStr) : [];
+  const birthdayHtml = birthdays.map(b => renderBirthdayBar(b)).join('');
   const custodyClass = display.mode === 'visit'
     ? `cal-visit-day cal-base-${display.baseParent} cal-visit-parent-${display.visitParent}`
     : `custody-${display.parent}${display.mode === 'return' ? ' cal-return-day' : ''}`;
@@ -209,13 +212,14 @@ function renderCalDay(num, dateStr, data, otherMonth, options = {}) {
        ${events.length > 2 ? `<div class="cal-event-dot">+${events.length - 2} עוד</div>` : ''}`;
 
   return `
-    <div class="cal-day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${custodyClass}${events.length ? ' has-events' : ''}${holidays.length ? ' has-holiday' : ''}"
-         ${options.print ? '' : `data-date="${dateStr}"`} title="${title}${holidays.length ? ' · ' + holidays.map(h => h.name).join(', ') : ''}"${printStyle ? ` style="${printStyle}"` : ''}>
+    <div class="cal-day ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${custodyClass}${events.length ? ' has-events' : ''}${holidays.length ? ' has-holiday' : ''}${birthdays.length ? ' has-birthday' : ''}"
+         ${options.print ? '' : `data-date="${dateStr}"`} title="${title}${birthdays.length ? ' · יום הולדת: ' + birthdays.map(b => b.child.name).join(', ') : ''}${holidays.length ? ' · ' + holidays.map(h => h.name).join(', ') : ''}"${printStyle ? ` style="${printStyle}"` : ''}>
       ${splitBgHtml}
       ${isToday ? '<span class="cal-today-badge" aria-hidden="true">היום</span>' : ''}
       <div class="cal-day-content">
         <div class="cal-day-num">${num}</div>
         ${timeHtml}
+        ${birthdayHtml}
         ${holidayHtml}
         ${eventsHtml}
       </div>
@@ -1095,8 +1099,17 @@ function renderEvents(data) {
 function renderExpenses(data) {
   const summary = calculateExpenseSummary(data);
   const { parentA, parentB, settlement, rows } = summary;
-  const pending = rows.filter(e => !e.paid);
+  const myRole = typeof getMySenderRole === 'function' ? getMySenderRole() : 'a';
+  const awaitingApproval = getExpensesAwaitingMyApproval(data, myRole);
+  const pending = rows.filter(e => !e.paid && isExpenseActive(e));
   const totalPending = pending.reduce((s, e) => s + e.amount, 0);
+
+  function statusBadgeClass(e) {
+    if (e.approvalStatus === 'rejected') return 'badge-danger';
+    if (e.requiresApproval && e.approvalStatus === 'pending') return 'badge-warning';
+    if (e.paid) return 'badge-success';
+    return 'badge-warning';
+  }
 
   return `
     <div class="grid grid-3" style="margin-bottom:1.25rem">
@@ -1125,6 +1138,30 @@ function renderExpenses(data) {
     ${rows.length === 0 ? `
       <div class="card">${renderEmptyState('💰', 'אין הוצאות', 'עקוב/י אחר הוצאות משותפות על הילדים', 'הוסף הוצאה', 'add-expense')}</div>
     ` : `
+      ${awaitingApproval.length ? `
+        <div class="card expense-approval-card">
+          <div class="card-header">
+            <div class="card-title">✋ ממתין לאישורך (${awaitingApproval.length})</div>
+          </div>
+          <ul class="expense-approval-list">
+            ${awaitingApproval.map(e => `
+              <li class="expense-approval-row">
+                <div>
+                  <div class="expense-table-title">${e.title}</div>
+                  <div class="expense-table-meta">${formatCurrency(e.amount)} · ${formatDate(e.date)} · ${getParentName(data, e.createdBy)} מבקש/ת</div>
+                  ${e.notes ? `<div class="expense-table-meta">${e.notes}</div>` : ''}
+                </div>
+                <div class="expense-approval-actions">
+                  <button class="btn btn-sm btn-primary" data-action="approve-expense-split" data-id="${e.id}">מאשר/ת לחלוק</button>
+                  <button class="btn btn-sm btn-secondary" data-action="approve-expense-full" data-id="${e.id}">מאשר/ת — הוא/היא משלם/ת</button>
+                  <button class="btn btn-sm btn-danger" data-action="reject-expense" data-id="${e.id}">דחייה</button>
+                </div>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
       ${renderExpenseSettlement(summary)}
 
       <div class="card expense-summary-card">
@@ -1185,9 +1222,9 @@ function renderExpenses(data) {
                   <td data-label="חלק ${parentA.name}" class="expense-share-a">${formatCurrency(e.shareA)}</td>
                   <td data-label="חלק ${parentB.name}" class="expense-share-b">${formatCurrency(e.shareB)}</td>
                   <td data-label="חלוקה">${e.splitPercent}% / ${100 - e.splitPercent}%</td>
-                  <td data-label="סטטוס"><span class="badge ${e.paid ? 'badge-success' : 'badge-warning'}">${e.paid ? 'שולם' : 'ממתין'}</span></td>
+                  <td data-label="סטטוס"><span class="badge ${statusBadgeClass(e)}">${e.statusLabel}</span></td>
                   <td data-label="פעולות" class="expense-table-actions">
-                    ${!e.paid ? `<button class="btn btn-sm btn-primary" data-action="mark-paid" data-id="${e.id}">שולם</button>` : ''}
+                    ${!e.paid && isExpenseActive(e) ? `<button class="btn btn-sm btn-primary" data-action="mark-paid" data-id="${e.id}">שולם</button>` : ''}
                     <button class="btn btn-sm btn-secondary" data-action="edit-expense" data-id="${e.id}">ערוך</button>
                     <button class="btn btn-sm btn-danger" data-action="delete-expense" data-id="${e.id}">מחק</button>
                   </td>
@@ -1328,6 +1365,7 @@ function renderSettings(data) {
     <div class="grid grid-2">
       ${accountCard}
       ${familyCard}
+      ${typeof renderNotificationSettings === 'function' ? renderNotificationSettings() : ''}
       <div class="card">
         <div class="card-title" style="margin-bottom:1rem">פרטי הורים</div>
         <form id="settings-form">
@@ -1517,7 +1555,18 @@ function getExpenseFormHtml(data, expense = null) {
         <label class="form-label">הערות</label>
         <textarea class="form-textarea" name="notes">${expense?.notes || ''}</textarea>
       </div>
-      <div class="form-group">
+      ${!expense ? `
+      <div class="form-group expense-approval-toggle">
+        <label style="display:flex;align-items:flex-start;gap:0.5rem;cursor:pointer">
+          <input type="checkbox" name="requiresApproval" ${expense?.requiresApproval ? 'checked' : ''}>
+          <span>
+            <strong>שאל את ההורה השני לפני ההוצאה</strong>
+            <span class="form-hint" style="display:block;margin-top:0.25rem">להוצאה לא הכרחית — ההורה השני יוכל לאשר, לדחות, או לאשר בלי לחלוק</span>
+          </span>
+        </label>
+      </div>
+      ` : ''}
+      <div class="form-group" id="expense-paid-group">
         <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
           <input type="checkbox" name="paid" ${expense?.paid ? 'checked' : ''}>
           <span>סומן כשולם</span>
@@ -1558,13 +1607,19 @@ function getDayDetailHtml(data, dateStr) {
   const dayInfo = getCustodyDayInfo(data, dateStr);
   const display = getCalendarDayDisplay(data, dateStr);
   const events = data.events.filter(e => e.date === dateStr);
+  const birthdays = typeof getBirthdaysOnDateSync === 'function' ? getBirthdaysOnDateSync(data, dateStr) : [];
   const visitNote = display.mode === 'return'
     ? `<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">${formatCustodyTimeLabel(dayInfo, 'return')}</p>`
     : display.mode === 'visit'
       ? `<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">${formatCustodyTimeLabel(dayInfo)}</p>`
       : '<p style="margin:0.35rem 0 0;font-size:0.9rem;color:var(--text-muted)">משמורת עם לינה</p>';
 
+  const birthdayBlock = birthdays.length
+    ? `<div class="birthday-day-block">${renderBirthdayCelebrationHtml(birthdays)}</div>`
+    : '';
+
   return `
+    ${birthdayBlock}
     <p style="margin-bottom:1rem"><strong>משמורת:</strong> <span class="badge badge-${dayInfo.parent}">${getParentName(data, dayInfo.parent)}</span>${visitNote}</p>
     ${events.length === 0 ? '<p style="color:var(--text-muted)">אין אירועים ביום זה</p>' : `
       <ul class="list">

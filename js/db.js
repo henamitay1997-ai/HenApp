@@ -40,6 +40,9 @@ function translateDbError(err) {
   if (combined.includes('parent_a_avatar') || combined.includes('parent_b_avatar') || combined.includes('avatar_url')) {
     return 'חסרות עמודות תמונה — הרץ/י ב-Supabase את AVATARS-ONLY.sql';
   }
+  if (combined.includes('requires_approval') || combined.includes('approval_status') || combined.includes('agree_to_split')) {
+    return 'חסרות עמודות אישור הוצאות — הרץ/י ב-Supabase את expense-approval.sql';
+  }
   if (isFamilyDbError(err)) {
     return 'בעיה בטבלאות משפחה — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
   }
@@ -237,7 +240,12 @@ function mapExpense(row) {
     paid: row.paid,
     category: row.category || 'אחר',
     childId: row.child_id || null,
-    notes: row.notes || ''
+    notes: row.notes || '',
+    requiresApproval: !!row.requires_approval,
+    approvalStatus: row.approval_status || 'approved',
+    createdBy: row.created_by || row.paid_by || 'a',
+    respondedBy: row.responded_by || null,
+    agreeToSplit: row.agree_to_split !== false
   };
 }
 
@@ -595,23 +603,29 @@ async function deleteEvent(id) {
 }
 
 async function createExpense(data) {
-  const { data: row, error } = await db().from('expenses').insert(entityInsertPayload({
+  const requiresApproval = !!data.requiresApproval;
+  const rowPayload = {
     title: data.title,
     amount: data.amount,
     date: data.date,
     paid_by: data.paidBy,
     split_percent: data.splitPercent,
-    paid: data.paid,
+    paid: requiresApproval ? false : !!data.paid,
     category: data.category || 'אחר',
     child_id: data.childId || null,
-    notes: data.notes || ''
-  })).select().single();
+    notes: data.notes || '',
+    requires_approval: requiresApproval,
+    approval_status: requiresApproval ? 'pending' : 'approved',
+    created_by: data.createdBy || data.paidBy || 'a',
+    agree_to_split: data.agreeToSplit !== false
+  };
+  const { data: row, error } = await db().from('expenses').insert(entityInsertPayload(rowPayload)).select().single();
   if (error) throw error;
   return mapExpense(row);
 }
 
 async function updateExpense(id, data) {
-  let query = db().from('expenses').update({
+  const payload = {
     title: data.title,
     amount: data.amount,
     date: data.date,
@@ -621,8 +635,28 @@ async function updateExpense(id, data) {
     category: data.category || 'אחר',
     child_id: data.childId || null,
     notes: data.notes || ''
-  }).eq('id', id).eq('user_id', dbUserId);
+  };
+  if (data.requiresApproval != null) payload.requires_approval = !!data.requiresApproval;
+  let query = db().from('expenses').update(payload).eq('id', id).eq('user_id', dbUserId);
   if (familyId) query = query.eq('family_id', familyId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function respondToExpense(id, { approvalStatus, agreeToSplit, splitPercent, respondedBy, paidBy }) {
+  const payload = {
+    approval_status: approvalStatus,
+    responded_by: respondedBy,
+    responded_at: new Date().toISOString(),
+    agree_to_split: agreeToSplit !== false
+  };
+  if (splitPercent != null) payload.split_percent = splitPercent;
+  if (approvalStatus === 'approved' && agreeToSplit === false && splitPercent == null && paidBy) {
+    payload.split_percent = paidBy === 'a' ? 100 : 0;
+  }
+  let query = db().from('expenses').update(payload).eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
   const { error } = await query;
   if (error) throw error;
 }

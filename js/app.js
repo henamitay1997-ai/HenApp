@@ -16,6 +16,8 @@ let listenersReady = false;
 let loadedUserId = null;
 let custodyPreviewWeekOffset = 0;
 let calendarHolidaysLoading = false;
+let calendarBirthdaysLoading = false;
+let notifSnapshot = null;
 
 function captureJoinCodeFromUrl() {
   const match = window.location.hash.match(/^#join\/([A-Za-z0-9]+)/);
@@ -35,7 +37,15 @@ function showLoading(show) {
 }
 
 async function refreshData() {
+  const prev = notifSnapshot;
   appData = await loadAppData();
+  if (typeof clearBirthdayCache === 'function') clearBirthdayCache();
+  notifSnapshot = typeof buildNotificationSnapshot === 'function'
+    ? buildNotificationSnapshot(appData)
+    : null;
+  if (prev && typeof checkNotifications === 'function') {
+    await checkNotifications(appData, prev);
+  }
 }
 
 async function handleDbError(err, fallbackMsg = 'שגיאה בשמירה') {
@@ -78,7 +88,7 @@ function render() {
       break;
     case 'calendar':
       content.innerHTML = renderCalendar(appData, calYear, calMonth);
-      refreshCalendarHolidaysOnce();
+      refreshCalendarExtrasOnce();
       break;
     case 'custody':
       content.innerHTML = renderCustody(appData, custodyPreviewWeekOffset);
@@ -102,6 +112,9 @@ function render() {
     case 'settings':
       content.innerHTML = renderSettings(appData);
       initAvatarPickers(document.getElementById('content'));
+      if (typeof initNotificationSettings === 'function') {
+        initNotificationSettings(document.getElementById('content'));
+      }
       break;
   }
 
@@ -132,6 +145,35 @@ async function refreshCalendarHolidaysOnce() {
   }
 }
 
+async function refreshCalendarExtrasOnce() {
+  refreshCalendarHolidaysOnce();
+  if (calendarBirthdaysLoading || typeof preloadBirthdaysForMonth !== 'function') return;
+  calendarBirthdaysLoading = true;
+  try {
+    await preloadBirthdaysForMonth(appData, calYear, calMonth);
+    const page = window.location.hash.slice(1) || 'dashboard';
+    if (page === 'calendar') render();
+  } finally {
+    calendarBirthdaysLoading = false;
+  }
+}
+
+async function maybeShowBirthdayPopup() {
+  if (typeof getBirthdaysOnDateCached !== 'function') return;
+  const today = new Date().toISOString().split('T')[0];
+  const key = `birthday-popup-${today}`;
+  if (sessionStorage.getItem(key)) return;
+  const birthdays = await getBirthdaysOnDateCached(appData, today);
+  if (!birthdays.length) return;
+  sessionStorage.setItem(key, '1');
+  openModal(
+    '🎉 יום הולדת שמח!',
+    renderBirthdayCelebrationHtml(birthdays),
+    '<button type="button" class="btn btn-primary" id="modal-birthday-ok">מזל טוב!</button>'
+  );
+  document.getElementById('modal-birthday-ok')?.addEventListener('click', closeModal);
+}
+
 function getCalendarPrintHtml() {
   const base = window.location.href.replace(/[#?].*$/, '').replace(/[^/]+$/, '');
   return `<!DOCTYPE html>
@@ -140,7 +182,7 @@ function getCalendarPrintHtml() {
   <meta charset="UTF-8">
   <title>לוח משמורת</title>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="${base}css/styles.css?v=10">
+  <link rel="stylesheet" href="${base}css/styles.css?v=11">
   <style>
     body { margin: 0; padding: 16px; font-family: Heebo, sans-serif; background: #fff; }
     @page { size: A4 landscape; margin: 12mm; }
@@ -368,16 +410,26 @@ function handleExpenseForm(expense = null) {
 
   initExpenseSplitPicker(form);
 
+  const approvalCheckbox = form.querySelector('[name=requiresApproval]');
+  const paidGroup = form.querySelector('#expense-paid-group');
+  approvalCheckbox?.addEventListener('change', () => {
+    if (paidGroup) paidGroup.style.display = approvalCheckbox.checked ? 'none' : '';
+  });
+  if (approvalCheckbox?.checked && paidGroup) paidGroup.style.display = 'none';
+
   document.getElementById('modal-save')?.addEventListener('click', async () => {
     const data = getFormData(form);
     const paidCheckbox = form.querySelector('[name=paid]');
+    const requiresApproval = !!form.querySelector('[name=requiresApproval]')?.checked;
 
     const payload = {
       ...data,
       amount: parseFloat(data.amount),
       splitPercent: Math.max(0, Math.min(100, parseInt(data.splitPercent, 10) || 50)),
-      paid: paidCheckbox?.checked || false,
-      childId: data.childId || null
+      paid: requiresApproval ? false : (paidCheckbox?.checked || false),
+      childId: data.childId || null,
+      requiresApproval,
+      createdBy: getMySenderRole()
     };
 
     try {
@@ -398,11 +450,20 @@ function handleExpenseForm(expense = null) {
 }
 
 function handleDayClick(dateStr) {
-  openModal(formatDate(dateStr), getDayDetailHtml(appData, dateStr), '');
-  document.querySelector('[data-action="add-event-date"]')?.addEventListener('click', () => {
-    closeModal();
-    handleEventForm(null, dateStr);
-  });
+  (async () => {
+    let birthdays = typeof getBirthdaysOnDateSync === 'function'
+      ? getBirthdaysOnDateSync(appData, dateStr)
+      : [];
+    if (typeof getBirthdaysOnDateCached === 'function') {
+      birthdays = await getBirthdaysOnDateCached(appData, dateStr);
+    }
+    const title = birthdays.length ? `🎂 ${formatDate(dateStr)}` : formatDate(dateStr);
+    openModal(title, getDayDetailHtml(appData, dateStr), '');
+    document.querySelector('[data-action="add-event-date"]')?.addEventListener('click', () => {
+      closeModal();
+      handleEventForm(null, dateStr);
+    });
+  })();
 }
 
 function handleContentClick(e) {
@@ -499,6 +560,72 @@ function handleContentClick(e) {
           showLoading(false);
         }
       })();
+      break;
+    case 'approve-expense-split':
+      (async () => {
+        const expense = appData.expenses.find(ex => ex.id === id);
+        if (!expense) return;
+        try {
+          showLoading(true);
+          await respondToExpense(id, {
+            approvalStatus: 'approved',
+            agreeToSplit: true,
+            respondedBy: getMySenderRole(),
+            paidBy: expense.paidBy
+          });
+          await refreshData();
+          showToast('ההוצאה אושרה לחלוק', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
+      break;
+    case 'approve-expense-full':
+      (async () => {
+        const expense = appData.expenses.find(ex => ex.id === id);
+        if (!expense) return;
+        try {
+          showLoading(true);
+          await respondToExpense(id, {
+            approvalStatus: 'approved',
+            agreeToSplit: false,
+            respondedBy: getMySenderRole(),
+            paidBy: expense.paidBy
+          });
+          await refreshData();
+          showToast('ההוצאה אושרה — המבקש/ת משלם/ת', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      })();
+      break;
+    case 'reject-expense':
+      confirmDelete('לדחות את בקשת ההוצאה?').then(async ok => {
+        if (!ok) return;
+        const expense = appData.expenses.find(ex => ex.id === id);
+        try {
+          showLoading(true);
+          await respondToExpense(id, {
+            approvalStatus: 'rejected',
+            agreeToSplit: false,
+            respondedBy: getMySenderRole(),
+            paidBy: expense?.paidBy
+          });
+          await refreshData();
+          showToast('ההוצאה נדחתה', 'success');
+          render();
+        } catch (err) {
+          handleDbError(err);
+        } finally {
+          showLoading(false);
+        }
+      });
       break;
     case 'download-expense-pdf':
       downloadExpenseReportPdf(appData);
@@ -1132,6 +1259,8 @@ async function onUserLoggedIn(user) {
   if (!window.location.hash) window.location.hash = 'dashboard';
   setupEventListeners();
   render();
+  maybeShowBirthdayPopup();
+  if (typeof registerServiceWorker === 'function') registerServiceWorker();
 }
 
 function onUserLoggedOut() {
@@ -1143,6 +1272,7 @@ function onUserLoggedOut() {
 
 async function bootstrap() {
   captureJoinCodeFromUrl();
+  if (typeof registerServiceWorker === 'function') registerServiceWorker();
 
   if (!initAuth()) {
     showAuthGate('not-configured');

@@ -415,7 +415,26 @@ function getUpcomingEvents(data, days = 7) {
 }
 
 function getPendingExpenses(data) {
-  return data.expenses.filter(e => !e.paid);
+  return data.expenses.filter(e => !e.paid && isExpenseActive(e));
+}
+
+function isExpenseActive(expense) {
+  if (expense.approvalStatus === 'rejected') return false;
+  if (expense.requiresApproval && expense.approvalStatus === 'pending') return false;
+  return true;
+}
+
+function getExpensesAwaitingMyApproval(data, myRole) {
+  return (data.expenses || []).filter(e =>
+    e.requiresApproval && e.approvalStatus === 'pending' && e.createdBy !== myRole
+  );
+}
+
+function getExpenseStatusLabel(e) {
+  if (e.approvalStatus === 'rejected') return 'נדחה';
+  if (e.requiresApproval && e.approvalStatus === 'pending') return 'ממתין לאישור';
+  if (e.paid) return 'שולם';
+  return 'ממתין לתשלום';
 }
 
 function calculateExpenseSummary(data) {
@@ -431,19 +450,23 @@ function calculateExpenseSummary(data) {
   const rows = [...data.expenses]
     .sort((a, b) => b.date.localeCompare(a.date))
     .map(e => {
-      const shareA = e.amount * (e.splitPercent / 100);
-      const shareB = e.amount - shareA;
-      total += e.amount;
-      shouldA += shareA;
-      shouldB += shareB;
-      if (e.paidBy === 'a') paidA += e.amount;
-      else paidB += e.amount;
+      const active = isExpenseActive(e);
+      const shareA = active ? e.amount * (e.splitPercent / 100) : 0;
+      const shareB = active ? e.amount - shareA : 0;
+      if (active) {
+        total += e.amount;
+        shouldA += shareA;
+        shouldB += shareB;
+        if (e.paidBy === 'a') paidA += e.amount;
+        else paidB += e.amount;
+      }
 
       return {
         ...e,
         shareA,
         shareB,
-        paidByName: getParentName(data, e.paidBy)
+        paidByName: getParentName(data, e.paidBy),
+        statusLabel: getExpenseStatusLabel(e)
       };
     });
 
