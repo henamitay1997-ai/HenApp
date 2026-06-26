@@ -3,41 +3,7 @@
 -- הרץ/י ב-Supabase SQL Editor אחרי schema.sql הקודם
 -- ============================================================
 
--- פונקציית עזר: משפחות של המשתמש
-create or replace function public.user_family_ids()
-returns setof uuid
-language sql stable security definer set search_path = public
-as $$
-  select family_id from public.family_members where user_id = auth.uid();
-$$;
-
--- יצירת קוד הזמנה
-create or replace function public.generate_invite_code()
-returns text
-language plpgsql
-as $$
-declare
-  chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  result text := '';
-  i int;
-  attempts int := 0;
-begin
-  loop
-    result := '';
-    for i in 1..8 loop
-      result := result || substr(chars, floor(random() * length(chars) + 1)::int, 1);
-    end loop;
-  exit when not exists (select 1 from public.families where invite_code = result);
-    attempts := attempts + 1;
-    if attempts > 20 then
-      raise exception 'לא ניתן ליצור קוד הזמנה';
-    end if;
-  end loop;
-  return result;
-end;
-$$;
-
--- משפחות
+-- משפחות (טבלאות קודם — לפני פונקציות שמפנות אליהן)
 create table if not exists public.families (
   id uuid primary key default gen_random_uuid(),
   name text not null default 'המשפחה שלנו',
@@ -85,6 +51,40 @@ alter table public.children add column if not exists family_id uuid references p
 alter table public.events add column if not exists family_id uuid references public.families on delete cascade;
 alter table public.expenses add column if not exists family_id uuid references public.families on delete cascade;
 alter table public.messages add column if not exists family_id uuid references public.families on delete cascade;
+
+-- יצירת קוד הזמנה
+create or replace function public.generate_invite_code()
+returns text
+language plpgsql
+as $$
+declare
+  chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  result text := '';
+  i int;
+  attempts int := 0;
+begin
+  loop
+    result := '';
+    for i in 1..8 loop
+      result := result || substr(chars, floor(random() * length(chars) + 1)::int, 1);
+    end loop;
+  exit when not exists (select 1 from public.families where invite_code = result);
+    attempts := attempts + 1;
+    if attempts > 20 then
+      raise exception 'לא ניתן ליצור קוד הזמנה';
+    end if;
+  end loop;
+  return result;
+end;
+$$;
+
+-- פונקציית עזר: משפחות של המשתמש
+create or replace function public.user_family_ids()
+returns setof uuid
+language sql stable security definer set search_path = public
+as $$
+  select family_id from public.family_members where user_id = auth.uid();
+$$;
 
 -- מיגרציית נתונים קיימים: כל משתמש מקבל משפחה משלו
 do $$
