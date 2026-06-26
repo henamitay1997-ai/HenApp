@@ -1,12 +1,17 @@
--- טפסי הסכמה הורית + עדכונים — הרץ/י ב-Supabase SQL Editor
+-- ═══════════════════════════════════════════════════════════════
+-- טפסי הסכמה + עדכונים — הרץ/י את כל הקובץ ב-Supabase SQL Editor
+-- Dashboard → SQL Editor → New query → הדבק/י הכל → Run
+-- ═══════════════════════════════════════════════════════════════
 
+-- 1. ת.ז. בפרופיל
 alter table public.profiles
   add column if not exists id_number text;
 
+-- 2. טבלת טפסי הסכמה
 create table if not exists public.consent_forms (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users on delete cascade not null,
-  family_id uuid references public.families on delete cascade,
+  family_id uuid,
   form_type text not null default 'parental_activity',
   status text not null default 'draft'
     check (status in ('draft', 'pending_signature', 'completed')),
@@ -30,10 +35,11 @@ create table if not exists public.consent_forms (
   updated_at timestamptz default now()
 );
 
+-- 3. טבלת עדכונים באפליקציה
 create table if not exists public.app_updates (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users on delete cascade not null,
-  family_id uuid references public.families on delete cascade,
+  family_id uuid,
   target_parent_role text check (target_parent_role is null or target_parent_role in ('a', 'b')),
   update_type text not null default 'general',
   title text not null,
@@ -52,24 +58,56 @@ create index if not exists app_updates_family_idx on public.app_updates (family_
 alter table public.consent_forms enable row level security;
 alter table public.app_updates enable row level security;
 
-drop policy if exists "Family members manage consent forms" on public.consent_forms;
-create policy "Family members manage consent forms" on public.consent_forms
+-- 4. הרשאות — עובד גם עם משפחה וגם בלי
+drop policy if exists "Users manage own consent forms" on public.consent_forms;
+create policy "Users manage own consent forms" on public.consent_forms
   for all using (
-    (family_id is not null and family_id in (select public.user_family_ids()))
-    or (family_id is null and user_id = auth.uid())
+    user_id = auth.uid()
+    or (
+      family_id is not null
+      and exists (
+        select 1 from public.family_members fm
+        where fm.family_id = consent_forms.family_id
+          and fm.user_id = auth.uid()
+      )
+    )
   )
   with check (
-    (family_id is not null and family_id in (select public.user_family_ids()))
-    or (family_id is null and user_id = auth.uid())
+    user_id = auth.uid()
+    or (
+      family_id is not null
+      and exists (
+        select 1 from public.family_members fm
+        where fm.family_id = consent_forms.family_id
+          and fm.user_id = auth.uid()
+      )
+    )
   );
 
-drop policy if exists "Family members manage app updates" on public.app_updates;
-create policy "Family members manage app updates" on public.app_updates
+drop policy if exists "Users manage own app updates" on public.app_updates;
+create policy "Users manage own app updates" on public.app_updates
   for all using (
-    (family_id is not null and family_id in (select public.user_family_ids()))
-    or (family_id is null and user_id = auth.uid())
+    user_id = auth.uid()
+    or (
+      family_id is not null
+      and exists (
+        select 1 from public.family_members fm
+        where fm.family_id = app_updates.family_id
+          and fm.user_id = auth.uid()
+      )
+    )
   )
   with check (
-    (family_id is not null and family_id in (select public.user_family_ids()))
-    or (family_id is null and user_id = auth.uid())
+    user_id = auth.uid()
+    or (
+      family_id is not null
+      and exists (
+        select 1 from public.family_members fm
+        where fm.family_id = app_updates.family_id
+          and fm.user_id = auth.uid()
+      )
+    )
   );
+
+-- אם הרצת עד כאן בלי שגיאות — הכל מוכן!
+select '✅ טבלאות האישורים נוצרו בהצלחה!' as result;

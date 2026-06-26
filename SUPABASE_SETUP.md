@@ -41,6 +41,11 @@ const SUPABASE_CONFIG = {
 
 זה יוצר משפחות, קודי הזמנה ושיתוף נתונים בין הורים.
 
+3. **SQL Editor → New query** — הרץ/י `supabase/expense-approval.sql` (אישור הוצאות)
+4. **SQL Editor → New query** — הרץ/י `supabase/consent-forms.sql` (טפסי חתימה ועדכונים)
+
+אחרי `consent-forms.sql` אמורה להופיע שורה: `✅ טבלאות האישורים נוצרו בהצלחה!`
+
 ## שלב 5: פרוס מחדש
 
 אחרי עדכון `config.js`:
