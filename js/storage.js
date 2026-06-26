@@ -47,7 +47,9 @@ const DEFAULT_DATA = {
   children: [],
   events: [],
   expenses: [],
-  messages: []
+  messages: [],
+  consentForms: [],
+  updates: []
 };
 
 function getParentName(data, parent) {

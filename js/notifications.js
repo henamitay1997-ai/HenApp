@@ -6,6 +6,7 @@ const DEFAULT_NOTIF_PREFS = {
   messages: true,
   expenses: true,
   expenseApproval: true,
+  consentSignature: true,
   birthdays: true,
   events: true,
   custody: true
@@ -122,6 +123,10 @@ function renderNotificationSettings() {
           <span>✋ בקשות אישור הוצאה</span>
         </label>
         <label class="notif-pref-row">
+          <input type="checkbox" data-notif-pref="consentSignature" ${prefs.consentSignature ? 'checked' : ''}>
+          <span>✍️ בקשות חתימה</span>
+        </label>
+        <label class="notif-pref-row">
           <input type="checkbox" data-notif-pref="birthdays" ${prefs.birthdays ? 'checked' : ''}>
           <span>🎂 ימי הולדת</span>
         </label>
@@ -197,6 +202,18 @@ async function checkNotifications(data, prevSnapshot) {
     }
   }
 
+  if (prefs.consentSignature) {
+    const pending = (data.consentForms || []).filter(c =>
+      typeof needsMySignature === 'function' && needsMySignature(c, myRole)
+    );
+    const prevIds = new Set(prevSnapshot?.pendingConsentIds || []);
+    for (const c of pending) {
+      if (!prevIds.has(c.id)) {
+        await showAppNotification('✍️ בקשה לחתימה', `${c.childFullName} — ${c.institutionName}`, { tag: `consent-${c.id}` });
+      }
+    }
+  }
+
   if (prefs.expenses && prevSnapshot?.expenseCount != null) {
     const newExpenses = data.expenses.length - prevSnapshot.expenseCount;
     if (newExpenses > 0) {
@@ -215,6 +232,10 @@ function buildNotificationSnapshot(data) {
     expenseCount: data.expenses?.length || 0,
     pendingApprovalIds: (data.expenses || [])
       .filter(e => e.requiresApproval && e.approvalStatus === 'pending')
-      .map(e => e.id)
+      .map(e => e.id),
+    pendingConsentIds: (data.consentForms || [])
+      .filter(c => c.status === 'pending_signature')
+      .map(c => c.id),
+    updateCount: data.updates?.length || 0
   };
 }

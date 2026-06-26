@@ -5,6 +5,8 @@ const PAGE_TITLES = {
   children: 'ילדים',
   events: 'אירועים',
   expenses: 'הוצאות',
+  approvals: 'אישורים וחתימות',
+  updates: 'עדכונים',
   messages: 'הודעות',
   settings: 'הגדרות'
 };
@@ -18,6 +20,7 @@ let custodyPreviewWeekOffset = 0;
 let calendarHolidaysLoading = false;
 let calendarBirthdaysLoading = false;
 let notifSnapshot = null;
+let pendingOpenConsentId = null;
 
 function captureJoinCodeFromUrl() {
   const match = window.location.hash.match(/^#join\/([A-Za-z0-9]+)/);
@@ -67,31 +70,57 @@ function syncNavActive(page) {
   });
 }
 
+function parseRoute() {
+  const raw = window.location.hash.slice(1) || 'dashboard';
+  const parts = raw.split('&');
+  const pageKey = parts[0].split('/')[0];
+  const params = {};
+  for (let i = 1; i < parts.length; i++) {
+    const [k, v] = parts[i].split('=');
+    if (k) params[k] = decodeURIComponent(v || '');
+  }
+  const page = PAGE_TITLES[pageKey] ? pageKey : 'dashboard';
+  return { page, params };
+}
+
 function updateNavBadges() {
   const myRole = getMySenderRole();
   const approvalCount = typeof getExpensesAwaitingMyApproval === 'function'
     ? getExpensesAwaitingMyApproval(appData, myRole).length
     : 0;
+  const consentCount = (appData.consentForms || []).filter(c =>
+    typeof needsMySignature === 'function' && needsMySignature(c, myRole)
+  ).length;
+  const updatesCount = typeof getUnreadUpdatesCount === 'function'
+    ? getUnreadUpdatesCount(appData, myRole)
+    : 0;
 
-  document.querySelectorAll('.nav-link[data-page="expenses"]').forEach(link => {
-    let badge = link.querySelector('.nav-badge');
-    if (approvalCount > 0) {
-      if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'nav-badge';
-        link.appendChild(badge);
+  function setBadge(selector, count, title) {
+    document.querySelectorAll(selector).forEach(link => {
+      let badge = link.querySelector('.nav-badge');
+      if (count > 0) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'nav-badge';
+          link.appendChild(badge);
+        }
+        badge.textContent = count;
+        badge.title = title;
+      } else {
+        badge?.remove();
       }
-      badge.textContent = approvalCount;
-      badge.title = `${approvalCount} הוצאות ממתינות לאישורך`;
-    } else {
-      badge?.remove();
-    }
-  });
+    });
+  }
+
+  setBadge('.nav-link[data-page="expenses"]', approvalCount, `${approvalCount} הוצאות ממתינות לאישורך`);
+  setBadge('.nav-link[data-page="approvals"]', consentCount, `${consentCount} טפסים ממתינים לחתימתך`);
+  setBadge('.nav-link[data-page="updates"]', updatesCount, `${updatesCount} עדכונים חדשים`);
 }
 
 function render() {
-  const hash = window.location.hash.slice(1) || 'dashboard';
-  const page = PAGE_TITLES[hash] ? hash : 'dashboard';
+  const route = parseRoute();
+  const page = route.page;
+  if (route.params.consent) pendingOpenConsentId = route.params.consent;
 
   document.getElementById('page-title').textContent = PAGE_TITLES[page];
   syncNavActive(page);
@@ -127,6 +156,16 @@ function render() {
     case 'expenses':
       content.innerHTML = renderExpenses(appData);
       break;
+    case 'approvals':
+      content.innerHTML = typeof renderConsentApprovalsPage === 'function'
+        ? renderConsentApprovalsPage(appData)
+        : '<div class="card"><p>טוען...</p></div>';
+      break;
+    case 'updates':
+      content.innerHTML = typeof renderUpdatesPage === 'function'
+        ? renderUpdatesPage(appData)
+        : '<div class="card"><p>טוען...</p></div>';
+      break;
     case 'messages':
       content.innerHTML = renderMessages(appData);
       scrollMessagesToBottom();
@@ -143,6 +182,13 @@ function render() {
   document.getElementById('topbar-actions').innerHTML = actionsHtml;
   updateNavBadges();
   closeSidebar();
+
+  if (pendingOpenConsentId && page === 'approvals') {
+    const consentId = pendingOpenConsentId;
+    pendingOpenConsentId = null;
+    const consent = (appData.consentForms || []).find(c => c.id === consentId);
+    if (consent) setTimeout(() => handleConsentForm(consent), 50);
+  }
 }
 
 function getCalendarHolidayYears(year, month) {
@@ -477,6 +523,175 @@ function handleExpenseForm(expense = null) {
   document.getElementById('modal-cancel')?.addEventListener('click', () => closeModal());
 }
 
+function handleConsentForm(consent = null) {
+  if (typeof destroySignaturePad === 'function') destroySignaturePad();
+
+  const myRole = getMySenderRole();
+  const isNew = !consent;
+  const canSign = consent && typeof canSignConsent === 'function' && canSignConsent(consent, myRole);
+  const isCompleted = consent?.status === 'completed';
+  const hasPartner = appData.family?.hasPartner;
+  const iSigned = consent && typeof consentHasSignature === 'function' && consentHasSignature(consent, myRole);
+
+  let footer = '';
+  if (isCompleted) {
+    footer = `<button class="btn btn-primary" id="modal-download-consent-pdf">📄 הורד PDF</button>
+      <button class="btn btn-secondary" id="modal-cancel">סגור</button>`;
+  } else {
+    footer = `<button class="btn btn-primary" id="modal-save-consent">${isNew ? 'שמור טיוטה' : 'שמור שינויים'}</button>`;
+    if (canSign || isNew) footer += `<button class="btn btn-primary" id="modal-sign-consent">✍️ חתום</button>`;
+    if (hasPartner && consent && iSigned && consent.status === 'pending_signature') {
+      footer += `<button class="btn btn-secondary" id="modal-send-consent">שלח להורה השני לחתימה</button>`;
+    }
+    footer += `<button class="btn btn-secondary" id="modal-cancel">ביטול</button>`;
+  }
+
+  openModal(
+    isNew ? 'טופס הסכמה הורית משותפת' : `טופס הסכמה — ${consent.childFullName || ''}`,
+    renderConsentFormModalHtml(appData, consent),
+    footer
+  );
+
+  const canvas = document.getElementById('signature-canvas');
+  if (canvas && typeof initSignaturePad === 'function') initSignaturePad(canvas);
+
+  const form = document.getElementById('consent-form');
+  form?.querySelector('#consent-child-select')?.addEventListener('change', (e) => {
+    const opt = e.target.selectedOptions[0];
+    const nameInput = form.querySelector('[name=childFullName]');
+    if (opt?.value && nameInput) nameInput.value = opt.textContent.trim();
+  });
+
+  const modalBody = document.getElementById('modal-body');
+  const onModalClick = (e) => {
+    if (e.target.closest('[data-action="clear-signature"]') && activeSignaturePad) {
+      activeSignaturePad.clear();
+    }
+  };
+  modalBody?.addEventListener('click', onModalClick);
+
+  async function collectConsentPayload() {
+    const data = getFormData(form);
+    return {
+      formType: 'parental_activity',
+      institutionName: data.institutionName?.trim(),
+      activityDescription: data.activityDescription?.trim(),
+      childId: data.childId || null,
+      childFullName: data.childFullName?.trim(),
+      childIdNumber: data.childIdNumber?.trim(),
+      parentAName: getParentName(appData, 'a'),
+      parentBName: getParentName(appData, 'b'),
+      parentAIdNumber: data.parentAIdNumber?.trim() || consent?.parentAIdNumber || '',
+      parentBIdNumber: data.parentBIdNumber?.trim() || consent?.parentBIdNumber || '',
+      createdBy: myRole
+    };
+  }
+
+  async function ensureConsentSaved() {
+    const payload = await collectConsentPayload();
+    if (!payload.institutionName || !payload.activityDescription || !payload.childFullName || !payload.childIdNumber) {
+      throw new Error('נא למלא את כל השדות המסומנים');
+    }
+    if (consent?.id) {
+      await updateConsentForm(consent.id, { ...payload, status: consent.status });
+      return consent.id;
+    }
+    const created = await createConsentForm(payload);
+    return created.id;
+  }
+
+  document.getElementById('modal-save-consent')?.addEventListener('click', async () => {
+    try {
+      showLoading(true);
+      await ensureConsentSaved();
+      await refreshData();
+      closeModal();
+      showToast('הטופס נשמר', 'success');
+      render();
+    } catch (err) {
+      showToast(err.message || translateDbError(err));
+    } finally {
+      showLoading(false);
+    }
+  });
+
+  document.getElementById('modal-sign-consent')?.addEventListener('click', async () => {
+    if (!activeSignaturePad || activeSignaturePad.isEmpty()) {
+      showToast('נא לחתום בשדה החתימה');
+      return;
+    }
+    const idField = form.querySelector(`[name=parent${myRole === 'a' ? 'A' : 'B'}IdNumber]`);
+    const idNumber = idField?.value?.trim();
+    if (!idNumber) {
+      showToast('נא למלא תעודת זהות');
+      return;
+    }
+    try {
+      showLoading(true);
+      const consentId = await ensureConsentSaved();
+      if (typeof saveProfileIdNumber === 'function') await saveProfileIdNumber(idNumber);
+      await signConsentForm(consentId, {
+        parentRole: myRole,
+        signature: activeSignaturePad.toDataUrl(),
+        idNumber,
+        parentName: getParentName(appData, myRole)
+      });
+      await refreshData();
+      const updated = appData.consentForms.find(c => c.id === consentId);
+      closeModal();
+      if (updated?.status === 'completed') {
+        showToast('שתי החתימות הושלמו! ניתן להוריד PDF', 'success');
+      } else if (hasPartner) {
+        showToast('נחתם בהצלחה — שלח/י להורה השני לחתימה', 'success');
+        handleConsentForm(updated);
+      } else {
+        showToast('נחתם בהצלחה', 'success');
+      }
+      render();
+    } catch (err) {
+      handleDbError(err);
+    } finally {
+      showLoading(false);
+    }
+  });
+
+  document.getElementById('modal-send-consent')?.addEventListener('click', async () => {
+    if (!consent) return;
+    try {
+      showLoading(true);
+      const result = await sendConsentSignatureRequest(appData, consent);
+      await refreshData();
+      closeModal();
+      const emailNote = result.partnerEmail ? ' ונפתח חלון מייל' : ' (הקישור הועתק)';
+      showToast(`נשלח להורה השני — מופיע גם בעדכונים${emailNote}`, 'success');
+      render();
+    } catch (err) {
+      handleDbError(err);
+    } finally {
+      showLoading(false);
+    }
+  });
+
+  document.getElementById('modal-download-consent-pdf')?.addEventListener('click', async () => {
+    if (!consent) return;
+    try {
+      showLoading(true);
+      await downloadConsentPdf(appData, consent);
+      showToast('ה-PDF הורד', 'success');
+    } catch (err) {
+      showToast(err.message || 'שגיאה בהורדת PDF');
+    } finally {
+      showLoading(false);
+    }
+  });
+
+  document.getElementById('modal-cancel')?.addEventListener('click', () => {
+    modalBody?.removeEventListener('click', onModalClick);
+    if (typeof destroySignaturePad === 'function') destroySignaturePad();
+    closeModal();
+  });
+}
+
 function handleDayClick(dateStr) {
   (async () => {
     let birthdays = typeof getBirthdaysOnDateSync === 'function'
@@ -654,6 +869,49 @@ function handleContentClick(e) {
           showLoading(false);
         }
       });
+      break;
+    case 'new-consent':
+      handleConsentForm();
+      break;
+    case 'open-consent': {
+      const consent = (appData.consentForms || []).find(c => c.id === id);
+      if (consent) handleConsentForm(consent);
+      break;
+    }
+    case 'download-consent-pdf': {
+      const consent = (appData.consentForms || []).find(c => c.id === id);
+      if (consent) {
+        (async () => {
+          try {
+            showLoading(true);
+            await downloadConsentPdf(appData, consent);
+            showToast('ה-PDF הורד', 'success');
+          } catch (err) {
+            showToast(err.message || 'שגיאה בהורדת PDF');
+          } finally {
+            showLoading(false);
+          }
+        })();
+      }
+      break;
+    }
+    case 'open-update':
+      (async () => {
+        const update = (appData.updates || []).find(u => u.id === id);
+        if (!update) return;
+        try {
+          await markAppUpdateRead(id, getMySenderRole());
+          await refreshData();
+          if (update.linkPage === 'approvals' && update.referenceId) {
+            window.location.hash = `approvals&consent=${update.referenceId}`;
+          } else {
+            window.location.hash = update.linkPage || 'updates';
+          }
+          render();
+        } catch (err) {
+          handleDbError(err);
+        }
+      })();
       break;
     case 'download-expense-pdf':
       downloadExpenseReportPdf(appData);

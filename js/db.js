@@ -43,6 +43,9 @@ function translateDbError(err) {
   if (combined.includes('requires_approval') || combined.includes('approval_status') || combined.includes('agree_to_split')) {
     return 'חסרות עמודות אישור הוצאות — הרץ/י ב-Supabase את expense-approval.sql';
   }
+  if (combined.includes('consent_forms') || combined.includes('app_updates')) {
+    return 'חסרות טבלאות אישורים — הרץ/י ב-Supabase את consent-forms.sql';
+  }
   if (isFamilyDbError(err)) {
     return 'בעיה בטבלאות משפחה — הרץ/י ב-Supabase את RUN-NOW-EN.sql';
   }
@@ -258,6 +261,47 @@ function mapMessage(row) {
   };
 }
 
+function mapConsent(row) {
+  return {
+    id: row.id,
+    formType: row.form_type || 'parental_activity',
+    status: row.status || 'draft',
+    documentCode: row.document_code,
+    childId: row.child_id,
+    institutionName: row.institution_name || '',
+    activityDescription: row.activity_description || '',
+    childFullName: row.child_full_name || '',
+    childIdNumber: row.child_id_number || '',
+    parentAName: row.parent_a_name || '',
+    parentAIdNumber: row.parent_a_id_number || '',
+    parentASignedAt: row.parent_a_signed_at,
+    parentASignature: row.parent_a_signature,
+    parentBName: row.parent_b_name || '',
+    parentBIdNumber: row.parent_b_id_number || '',
+    parentBSignedAt: row.parent_b_signed_at,
+    parentBSignature: row.parent_b_signature,
+    createdBy: row.created_by || 'a',
+    sentToPartnerAt: row.sent_to_partner_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapAppUpdate(row) {
+  return {
+    id: row.id,
+    updateType: row.update_type || 'general',
+    title: row.title,
+    body: row.body || '',
+    linkPage: row.link_page || 'updates',
+    referenceId: row.reference_id,
+    targetParentRole: row.target_parent_role,
+    readByA: !!row.read_by_a,
+    readByB: !!row.read_by_b,
+    createdAt: row.created_at
+  };
+}
+
 async function tryLoadFamilyContext() {
   const { data: fid, error: fidErr } = await db().rpc('ensure_user_family');
   if (fidErr) throw fidErr;
@@ -278,7 +322,7 @@ async function tryLoadFamilyContext() {
   const profileMap = {};
 
   if (userIds.length > 0) {
-    const { data: profiles } = await db().from('profiles').select('id, full_name, email').in('id', userIds);
+    const { data: profiles } = await db().from('profiles').select('id, full_name, email, id_number').in('id', userIds);
     (profiles || []).forEach(p => { profileMap[p.id] = p; });
   }
 
@@ -289,6 +333,7 @@ async function tryLoadFamilyContext() {
       parentRole: m.parent_role,
       name: profile?.full_name || profile?.email?.split('@')[0] || 'הורה',
       email: profile?.email || '',
+      idNumber: profile?.id_number || '',
       isMe: m.user_id === dbUserId
     };
   });
@@ -326,6 +371,25 @@ async function ensureUserData(userId) {
   await loadFamilyContext();
 }
 
+async function loadConsentAndUpdates(scopeField, scopeId) {
+  const consentQuery = db().from('consent_forms').select('*').eq(scopeField, scopeId).order('created_at', { ascending: false });
+  const updatesQuery = db().from('app_updates').select('*').eq(scopeField, scopeId).order('created_at', { ascending: false });
+  const [consentsRes, updatesRes] = await Promise.all([consentQuery, updatesQuery]);
+
+  if (consentsRes.error && !isConsentDbError(consentsRes.error)) throw consentsRes.error;
+  if (updatesRes.error && !isConsentDbError(updatesRes.error)) throw updatesRes.error;
+
+  return {
+    consentForms: (consentsRes.error ? [] : consentsRes.data || []).map(mapConsent),
+    updates: (updatesRes.error ? [] : updatesRes.data || []).map(mapAppUpdate)
+  };
+}
+
+function isConsentDbError(err) {
+  const combined = `${err?.message || ''} ${err?.details || ''}`.toLowerCase();
+  return combined.includes('consent_forms') || combined.includes('app_updates');
+}
+
 async function loadLegacyAppData() {
   const settingsRes = await db().from('user_settings').select('*').eq('user_id', dbUserId).maybeSingle();
 
@@ -341,13 +405,16 @@ async function loadLegacyAppData() {
   if (expensesRes.error) throw expensesRes.error;
   if (messagesRes.error) throw messagesRes.error;
 
+  const extra = await loadConsentAndUpdates('user_id', dbUserId);
+
   return {
     family: null,
     settings: mapSettings(settingsRes.data, settingsRes.data?.current_parent),
     children: (childrenRes.data || []).map(mapChild),
     events: (eventsRes.data || []).map(mapEvent),
     expenses: (expensesRes.data || []).map(mapExpense),
-    messages: (messagesRes.data || []).map(mapMessage)
+    messages: (messagesRes.data || []).map(mapMessage),
+    ...extra
   };
 }
 
@@ -383,6 +450,7 @@ async function loadFamilyAppData() {
   }
 
   const settingsRow = settingsRes.data || (await db().from('family_settings').select('*').eq('family_id', familyId).single()).data;
+  const extra = await loadConsentAndUpdates('family_id', familyId);
 
   return {
     family: familyInfo,
@@ -390,7 +458,8 @@ async function loadFamilyAppData() {
     children: children.map(mapChild),
     events: (eventsRes.data || []).map(mapEvent),
     expenses: (expensesRes.data || []).map(mapExpense),
-    messages: (messagesRes.data || []).map(mapMessage)
+    messages: (messagesRes.data || []).map(mapMessage),
+    ...extra
   };
 }
 
@@ -740,4 +809,125 @@ async function seedDemoDataToDb() {
   await createExpense({ title: 'תשלום גן — איתי', amount: 2800, date: today.toISOString().split('T')[0], childId: child2.id, paidBy: 'b', splitPercent: 50, paid: true, category: 'חינוך', notes: 'תשלום רבעוני' });
   await createMessage('היי, מחר יש לנועה רופא ב-16:30. תוכל/י לקחת?', 'a');
   await createMessage('בטח, אקח אותה. תשלח/י לי את הכתובת?', 'b');
+}
+
+async function createConsentForm(data) {
+  const myRole = data.createdBy || 'a';
+  const rowPayload = {
+    form_type: data.formType || 'parental_activity',
+    status: 'draft',
+    document_code: data.documentCode || `HBY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    child_id: data.childId || null,
+    institution_name: data.institutionName || '',
+    activity_description: data.activityDescription || '',
+    child_full_name: data.childFullName || '',
+    child_id_number: data.childIdNumber || '',
+    parent_a_name: data.parentAName || '',
+    parent_a_id_number: data.parentAIdNumber || '',
+    parent_b_name: data.parentBName || '',
+    parent_b_id_number: data.parentBIdNumber || '',
+    created_by: myRole,
+    updated_at: new Date().toISOString()
+  };
+  const { data: row, error } = await db().from('consent_forms').insert(entityInsertPayload(rowPayload)).select().single();
+  if (error) throw error;
+  return mapConsent(row);
+}
+
+async function updateConsentForm(id, data) {
+  const payload = {
+    institution_name: data.institutionName,
+    activity_description: data.activityDescription,
+    child_id: data.childId || null,
+    child_full_name: data.childFullName,
+    child_id_number: data.childIdNumber,
+    parent_a_name: data.parentAName,
+    parent_a_id_number: data.parentAIdNumber,
+    parent_b_name: data.parentBName,
+    parent_b_id_number: data.parentBIdNumber,
+    status: data.status,
+    updated_at: new Date().toISOString()
+  };
+  let query = db().from('consent_forms').update(payload).eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function signConsentForm(id, { parentRole, signature, idNumber, parentName }) {
+  const prefix = parentRole === 'a' ? 'parent_a' : 'parent_b';
+  const payload = {
+    [`${prefix}_signature`]: signature,
+    [`${prefix}_signed_at`]: new Date().toISOString(),
+    [`${prefix}_id_number`]: idNumber || '',
+    [`${prefix}_name`]: parentName || '',
+    updated_at: new Date().toISOString()
+  };
+
+  let fetchQuery = db().from('consent_forms').select('*').eq('id', id);
+  if (familyId) fetchQuery = fetchQuery.eq('family_id', familyId);
+  else fetchQuery = fetchQuery.eq('user_id', dbUserId);
+  const { data: existing, error: fetchErr } = await fetchQuery.single();
+  if (fetchErr) throw fetchErr;
+
+  const hasA = parentRole === 'a' ? true : !!existing.parent_a_signature;
+  const hasB = parentRole === 'b' ? true : !!existing.parent_b_signature;
+  payload.status = hasA && hasB ? 'completed' : 'pending_signature';
+
+  let query = db().from('consent_forms').update(payload).eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function markConsentSentToPartner(id) {
+  const payload = {
+    sent_to_partner_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  let query = db().from('consent_forms').update(payload).eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function deleteConsentForm(id) {
+  let query = db().from('consent_forms').delete().eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function createAppUpdate(data) {
+  const rowPayload = {
+    update_type: data.updateType || 'general',
+    title: data.title,
+    body: data.body || '',
+    link_page: data.linkPage || 'updates',
+    reference_id: data.referenceId || null,
+    target_parent_role: data.targetParentRole || null,
+    read_by_a: false,
+    read_by_b: false
+  };
+  const { data: row, error } = await db().from('app_updates').insert(entityInsertPayload(rowPayload)).select().single();
+  if (error) throw error;
+  return mapAppUpdate(row);
+}
+
+async function markAppUpdateRead(id, parentRole) {
+  const field = parentRole === 'a' ? 'read_by_a' : 'read_by_b';
+  let query = db().from('app_updates').update({ [field]: true }).eq('id', id);
+  if (familyId) query = query.eq('family_id', familyId);
+  else query = query.eq('user_id', dbUserId);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function saveProfileIdNumber(idNumber) {
+  const { error } = await db().from('profiles').update({ id_number: idNumber || null }).eq('id', dbUserId);
+  if (error && !`${error.message}`.includes('id_number')) throw error;
 }
