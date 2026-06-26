@@ -383,98 +383,162 @@ function enrichConsentForExport(data, consent) {
   };
 }
 
-function renderConsentPdfSignature(role, name, idNumber, signature, signedAt) {
+function formatConsentPdfDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('he-IL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+}
+
+function renderConsentPdfSignature(name, idNumber, signature, signedAt) {
   const sigHtml = signature
-    ? `<img src="${signature}" alt="חתימת ${escapeHtml(name)}" style="display:block;max-height:90px;max-width:300px;margin:10px 0 6px">`
-    : '<div style="height:70px;border-bottom:1px solid #94a3b8;margin:12px 0 8px;max-width:280px"></div>';
+    ? `<img src="${signature}" alt="" style="display:block;height:72px;max-width:240px;object-fit:contain;margin:8px 0">`
+    : '<div style="height:56px;border-bottom:1.5px solid #334155;margin:12px 0 8px;max-width:240px"></div>';
   return `
-    <div style="border:1px solid #cbd5e1;border-radius:8px;padding:14px 16px;margin:14px 0;background:#fafbfc">
-      <div style="font-size:15px;font-weight:700;margin-bottom:6px">${escapeHtml(name)}</div>
-      <div style="font-size:13px;color:#475569;margin-bottom:8px">ת.ז.: ${escapeHtml(idNumber || '—')}</div>
-      ${sigHtml}
-      <div style="font-size:12px;color:#64748b">תאריך חתימה: ${signedAt ? escapeHtml(formatDateTime(signedAt)) : '____________'}</div>
-    </div>
+    <table style="width:100%;border-collapse:collapse;margin-top:14px;font-size:14px">
+      <tr>
+        <td style="width:72px;padding:6px 0;color:#475569;vertical-align:top">שם</td>
+        <td style="padding:6px 0;font-weight:600">${escapeHtml(name)}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;color:#475569;vertical-align:top">ת.ז.</td>
+        <td style="padding:6px 0;font-weight:600;direction:ltr;text-align:right">${escapeHtml(idNumber || '—')}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;color:#475569;vertical-align:top">חתימה</td>
+        <td style="padding:6px 0">${sigHtml}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;color:#475569;vertical-align:top">תאריך</td>
+        <td style="padding:6px 0">${signedAt ? escapeHtml(formatConsentPdfDate(signedAt)) : '____________'}</td>
+      </tr>
+    </table>
   `;
+}
+
+const CONSENT_PDF_BASE_STYLE = `
+  font-family: 'Heebo', 'David', 'Arial', sans-serif;
+  color: #0f172a;
+  background: #fff;
+  width: 210mm;
+  max-width: 210mm;
+  min-height: 277mm;
+  box-sizing: border-box;
+  padding: 14mm 16mm 12mm;
+  line-height: 1.85;
+  font-size: 14.5px;
+  letter-spacing: 0;
+  word-spacing: normal;
+  word-break: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+`;
+
+function consentPdfParagraph(text) {
+  return `<p style="margin:0 0 14px;font-size:14.5px;line-height:1.9;text-align:justify;letter-spacing:0;word-spacing:normal">${text}</p>`;
 }
 
 function getConsentFormPdfHtml(data, consent) {
   const c = enrichConsentForExport(data, consent);
-  const generatedAt = new Date().toLocaleString('he-IL');
   const bothSigned = consentHasSignature(c, 'a') && consentHasSignature(c, 'b');
+  const institution = escapeHtml(c.institutionName || '—');
+  const activity = escapeHtml(c.activityDescription || '—');
+  const childName = escapeHtml(c.childFullName || '—');
+  const childId = escapeHtml(c.childIdNumber || '—');
+  const parentA = escapeHtml(c.parentAName);
+  const parentB = escapeHtml(c.parentBName);
+  const parentAId = escapeHtml(c.parentAIdNumber || '—');
+  const parentBId = escapeHtml(c.parentBIdNumber || '—');
 
   return `
-    <div id="consent-pdf-root" dir="rtl" lang="he" style="
-      font-family:'Heebo',Arial,sans-serif;
-      color:#0f172a;
-      background:#fff;
-      width:210mm;
-      max-width:210mm;
-      min-height:277mm;
-      box-sizing:border-box;
-      padding:18mm 16mm 16mm;
-      line-height:1.7;
-      font-size:15px;
-    ">
-      <div style="text-align:center;margin-bottom:22px;padding-bottom:14px;border-bottom:2px solid #e2e8f0">
-        <div style="font-size:13px;color:#64748b;letter-spacing:0.02em">הורים ביחד — ניהול הורות משותפת</div>
-        <h1 style="margin:10px 0 8px;font-size:24px;font-weight:700;line-height:1.35">טופס הסכמה הורית משותפת לפעילות</h1>
-        <div style="font-size:14px;color:#334155">מוגש ל: <strong>${escapeHtml(c.institutionName || '—')}</strong></div>
-        ${bothSigned ? '<div style="display:inline-block;margin-top:10px;padding:6px 14px;background:#dcfce7;color:#166534;border-radius:999px;font-size:13px;font-weight:700">✅ אושר על ידי שני ההורים</div>' : ''}
-        <div style="font-size:12px;color:#94a3b8;margin-top:10px">מזהה מסמך: ${escapeHtml(c.documentCode || '—')} · הופק: ${escapeHtml(generatedAt)}</div>
+    <div id="consent-pdf-root" dir="rtl" lang="he" style="${CONSENT_PDF_BASE_STYLE}">
+      <div style="border:2px solid #1e293b;padding:3mm;margin-bottom:6mm">
+        <div style="outline:1px solid #94a3b8;outline-offset:3px;padding:10mm 8mm 8mm">
+
+          <header style="text-align:center;margin-bottom:22px;padding-bottom:18px;border-bottom:3px double #1e293b">
+            <div style="font-size:11px;color:#64748b;margin-bottom:10px;letter-spacing:0.08em">טופס רשמי להגשה למוסד</div>
+            <h1 style="margin:0 0 12px;font-size:21px;font-weight:700;line-height:1.55;letter-spacing:0;word-spacing:normal">
+              הסכמה הורית משותפת לרישום לפעילות
+            </h1>
+            <div style="font-size:15px;line-height:1.7">
+              מוגש ל:&nbsp;<strong>${institution}</strong>
+            </div>
+            ${bothSigned ? `
+              <div style="margin-top:14px;display:inline-block;padding:5px 18px;border:1.5px solid #166534;color:#166534;font-size:12px;font-weight:700;letter-spacing:0.04em">
+                נחתם בידי שני ההורים
+              </div>
+            ` : ''}
+          </header>
+
+          <section style="margin-bottom:20px">
+            <h2 style="margin:0 0 10px;font-size:15px;font-weight:700;border-bottom:1px solid #cbd5e1;padding-bottom:6px">
+              מהות הפעילות
+            </h2>
+            <p style="margin:0;font-size:14.5px;line-height:1.85">${activity}</p>
+          </section>
+
+          <section style="margin-bottom:22px">
+            <h2 style="margin:0 0 10px;font-size:15px;font-weight:700;border-bottom:1px solid #cbd5e1;padding-bottom:6px">
+              פרטי הילד / הילדה
+            </h2>
+            <table style="width:100%;border-collapse:collapse;font-size:14.5px;border:1px solid #cbd5e1">
+              <tr>
+                <td style="padding:10px 12px;width:30%;background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#475569">שם מלא</td>
+                <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600">${childName}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 12px;background:#f8fafc;color:#475569">מספר תעודת זהות</td>
+                <td style="padding:10px 12px;font-weight:600;direction:ltr;text-align:right">${childId}</td>
+              </tr>
+            </table>
+          </section>
+
+          <section style="margin-bottom:22px">
+            <h2 style="margin:0 0 10px;font-size:15px;font-weight:700;border-bottom:1px solid #cbd5e1;padding-bottom:6px">
+              חלק א׳ — הצהרת ${parentA}
+            </h2>
+            ${consentPdfParagraph(`
+              אני, <strong>${parentA}</strong>, תעודת זהות מספר <strong>${parentAId}</strong>,
+              מצהיר/ה בזאת כי אני אפוטרופוס/אפוטרופוסית חוקי/ת של הילד/ה שפרטיו/ה מופיעים לעיל,
+              וכי אני מאשר/ת את רישומו/ה לפעילות המפורטת בטופס זה אצל <strong>${institution}</strong>.
+            `)}
+            <div style="border:1px solid #cbd5e1;padding:10px 14px;background:#fafbfc">
+              ${renderConsentPdfSignature(c.parentAName, c.parentAIdNumber, c.parentASignature, c.parentASignedAt)}
+            </div>
+          </section>
+
+          <section style="margin-bottom:22px">
+            <h2 style="margin:0 0 10px;font-size:15px;font-weight:700;border-bottom:1px solid #cbd5e1;padding-bottom:6px">
+              חלק ב׳ — הצהרת ${parentB}
+            </h2>
+            ${consentPdfParagraph(`
+              אני, <strong>${parentB}</strong>, תעודת זהות מספר <strong>${parentBId}</strong>,
+              מצהיר/ה בזאת כי אני אפוטרופוס/אפוטרופוסית חוקי/ת של הילד/ה שפרטיו/ה מופיעים לעיל,
+              וכי אני מאשר/ת את רישומו/ה לפעילות המפורטת בטופס זה אצל <strong>${institution}</strong>.
+            `)}
+            <div style="border:1px solid #cbd5e1;padding:10px 14px;background:#fafbfc">
+              ${renderConsentPdfSignature(c.parentBName, c.parentBIdNumber, c.parentBSignature, c.parentBSignedAt)}
+            </div>
+          </section>
+
+          <section style="margin-bottom:18px">
+            <h2 style="margin:0 0 10px;font-size:15px;font-weight:700;border-bottom:1px solid #cbd5e1;padding-bottom:6px">
+              חלק ג׳ — הצהרת הסכמה משותפת
+            </h2>
+            ${consentPdfParagraph(`
+              אנו, ההורים החתומים מטה, מצהירים כי הגענו להסכמה משותפת בנוגע לרישום הילד/ה לפעילות המפורטת.
+              ידוע לנו כי המוסד מסתמך על חתימותינו, ואנו מתחייבים לשפות את המוסד בגין כל טענה שתעלה כנגד הרישום, ככל שתעלה.
+            `)}
+          </section>
+
+          <footer style="margin-top:20px;padding-top:12px;border-top:1px solid #cbd5e1;font-size:11px;color:#64748b;text-align:center;line-height:1.7;letter-spacing:0">
+            מסמך זה נועד להסדיר את היחסים מול המוסד / הספק הפרטי, ואינו מחליף החלטות שיפוטיות.
+          </footer>
+
+        </div>
       </div>
-
-      <section style="margin-bottom:18px">
-        <h2 style="font-size:17px;font-weight:700;margin:0 0 8px">מהות הפעילות / ההרשמה</h2>
-        <p style="margin:0;font-size:15px">${escapeHtml(c.activityDescription || '—')}</p>
-      </section>
-
-      <section style="margin-bottom:18px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
-        <h2 style="font-size:17px;font-weight:700;margin:0 0 10px">פרטי הילד/ה</h2>
-        <table style="width:100%;border-collapse:collapse;font-size:15px">
-          <tr>
-            <td style="padding:6px 0;width:28%;color:#64748b">שם מלא</td>
-            <td style="padding:6px 0;font-weight:700">${escapeHtml(c.childFullName || '—')}</td>
-          </tr>
-          <tr>
-            <td style="padding:6px 0;color:#64748b">תעודת זהות</td>
-            <td style="padding:6px 0;font-weight:700">${escapeHtml(c.childIdNumber || '—')}</td>
-          </tr>
-        </table>
-      </section>
-
-      <section style="margin-bottom:18px">
-        <h2 style="font-size:17px;font-weight:700;margin:0 0 8px">חלק א׳ — הצהרת ${escapeHtml(c.parentAName)}</h2>
-        <p style="margin:0 0 10px;font-size:15px;text-align:justify">
-          אני, <strong>${escapeHtml(c.parentAName)}</strong>, ת.ז. <strong>${escapeHtml(c.parentAIdNumber || '—')}</strong>,
-          מצהיר/ה כי אני אפוטרופוס חוקי של הילד/ה שפרטיו מופיעים לעיל, ומאשר/ת בזאת את רישומו/ה לפעילות המדוברת
-          אצל <strong>${escapeHtml(c.institutionName || '—')}</strong>.
-        </p>
-        ${renderConsentPdfSignature('a', c.parentAName, c.parentAIdNumber, c.parentASignature, c.parentASignedAt)}
-      </section>
-
-      <section style="margin-bottom:18px">
-        <h2 style="font-size:17px;font-weight:700;margin:0 0 8px">חלק ב׳ — הצהרת ${escapeHtml(c.parentBName)}</h2>
-        <p style="margin:0 0 10px;font-size:15px;text-align:justify">
-          אני, <strong>${escapeHtml(c.parentBName)}</strong>, ת.ז. <strong>${escapeHtml(c.parentBIdNumber || '—')}</strong>,
-          מצהיר/ה כי אני אפוטרופוס חוקי של הילד/ה שפרטיו מופיעים לעיל, ומאשר/ת בזאת את רישומו/ה לפעילות המדוברת
-          אצל <strong>${escapeHtml(c.institutionName || '—')}</strong>.
-        </p>
-        ${renderConsentPdfSignature('b', c.parentBName, c.parentBIdNumber, c.parentBSignature, c.parentBSignedAt)}
-      </section>
-
-      <section style="margin-bottom:18px">
-        <h2 style="font-size:17px;font-weight:700;margin:0 0 8px">חלק ג׳ — הצהרת הסכמה משותפת (שיפוי)</h2>
-        <p style="margin:0;font-size:15px;text-align:justify">
-          שנינו, ההורים החתומים מטה, מצהירים כי הגענו להסכמה משותפת בנוגע לרישום הילד/ה לפעילות המפורטת בטופס זה.
-          ידוע לנו כי מוסד זה מסתמך על חתימותינו אלו, ואנו מתחייבים לשפות את המוסד בגין כל טענה שתעלה כנגד הרישום, ככל ותעלה.
-        </p>
-      </section>
-
-      <footer style="margin-top:24px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;text-align:center;line-height:1.6">
-        מסמך דיגיטלי עם חותמת זמן ומזהה ייחודי (${escapeHtml(c.documentCode || '—')}).
-        ניתן להדפיס או לשלוח למוסד כצילום / PDF.
-        טופס זה נועד להסדיר את היחסים מול הספק הפרטי ואינו מחליף החלטות שיפוטיות.
-      </footer>
     </div>
   `;
 }
@@ -486,14 +550,22 @@ function getConsentPrintDocumentHtml(data, consent) {
 <head>
   <meta charset="UTF-8">
   <title>הסכמה הורית — ${escapeHtml(consent.childFullName || '')}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    @page { size: A4; margin: 12mm; }
+    @page { size: A4; margin: 10mm; }
     html, body { margin: 0; padding: 0; background: #fff; }
-    body { display: flex; justify-content: center; }
+    body {
+      font-family: 'Heebo', 'David', Arial, sans-serif;
+      letter-spacing: 0;
+      word-spacing: normal;
+    }
     @media print {
-      body { display: block; }
-      #consent-pdf-root { width: auto !important; max-width: none !important; min-height: auto !important; padding: 0 !important; }
+      #consent-pdf-root {
+        width: auto !important;
+        max-width: none !important;
+        min-height: auto !important;
+        padding: 0 !important;
+      }
     }
   </style>
 </head>
@@ -515,8 +587,7 @@ async function waitForConsentPdfImages(root) {
 
 function getConsentPdfFilename(consent) {
   const safeName = (consent.childFullName || 'ילד').replace(/[\\/:*?"<>|]/g, '-').trim();
-  const code = consent.documentCode || 'form';
-  return `הסכמה-הורית-${safeName}-${code}.pdf`;
+  return `הסכמה-הורית-${safeName}.pdf`;
 }
 
 async function downloadConsentPdf(data, consent) {
