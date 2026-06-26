@@ -485,7 +485,7 @@ function getWeekPreview(data, days = 7, startOffset = 0) {
       ? getBiweeklyWeekIndex(dateStr, data.settings.custodyStartDate)
       : null;
     html += `
-      <li class="custody-preview-row ${dateStr === todayStr ? 'is-today' : ''}">
+      <li class="custody-preview-row custody-parent-${custody} ${dateStr === todayStr ? 'is-today' : ''}">
         <span class="custody-preview-date">${formatDateShort(dateStr)}</span>
         ${biweeklyWeek ? `<span class="custody-cycle-tag">שבוע ${biweeklyWeek}</span>` : ''}
         <span class="badge badge-${custody}">${getParentName(data, custody)}</span>
